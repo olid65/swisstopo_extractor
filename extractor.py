@@ -19,6 +19,11 @@ from thread_download import ThreadDownload
 
 CONTAINER_ORIGIN = 1026473
 
+ID_RECTANGLE_TOOL = 1058813
+
+
+FOLDER_NAME_SWISSTOPO = "swisstopo"
+
 
 URL_STAC_SWISSTOPO_BASE = 'https://data.geo.admin.ch/api/stac/v0.9/collections/'
 
@@ -29,6 +34,9 @@ DIC_LAYERS = {'ortho':'ch.swisstopo.swissimage-dop10',
 
 #Fichier pour le noms de lieu au m^ême emplacement que ce fichier
 LOCATIONS_FILE = os.path.join(os.path.dirname(__file__),'noms_lieux.json')
+
+
+TXT_NO_FILE_TO_DOWNLOAD = "Tous les fichiers existent déjà, ou il n'y a pas de fichier à télécharger"
 
 def dirImgToTextFile(path_dir, ext = '.tif'):
     """crée un fichier texte avec le chemin de l'image pour chaque ligne"""
@@ -242,6 +250,7 @@ class DlgBbox(c4d.gui.GeDialog):
     BTON_ORTHO = 1040
     BTON_CN = 1041
 
+    BTON_DRAW_RECTANGLE = 1049
     BTON_FROM_OBJECT = 1050
     BTON_FROM_VIEW = 1051
     BTON_COPY_ALL = 1052
@@ -259,9 +268,16 @@ class DlgBbox(c4d.gui.GeDialog):
     CHECKBOX_ORTHO2M = 1503
     CHECKBOX_ORTHO10CM = 1504
 
+    CHECKBOX_SWISSTOPO_FOLDER = 1510
+
+
     BTON_GET_URLS_DOWNLOAD = 1600
 
-    ID_TXT_DOWNLOAD_STATUS = 1700
+    ID_MAIN_GROUP = 1700
+    ID_GROUP_IMPORT_MODEL =1701
+    BTON_IMPORT_MODEL = 1702
+
+    ID_TXT_DOWNLOAD_STATUS = 1800
 
 
     LABEL_MNT2M = "MNT 2m"
@@ -270,16 +286,23 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_ORTHO2M = "Orthophoto 2m"
     LABEL_ORTHO10CM = "Orthophoto 10cm"
 
+    LABEL_SWISSTOPO_FOLDER = f'dossier "{FOLDER_NAME_SWISSTOPO}"'
+
 
     TXT_NO_ORIGIN = "Le document n'est pas géoréférencé !"
     TXT_NOT_VIEW_TOP = "Vous devez activer une vue de haut !"
     TXT_NO_SELECTION = "Vous devez sélectionner un objet !"
     TXT_MULTI_SELECTION = "Vous devez sélectionner un seul objet !"
+    TXT_NO_PLUGIN_RECTANGLE = "Le plugin de dessin de rectangle n'est pas installé !"
+
+    TXT_IMPORT_MODEL = "Tous les fichiers ont été téléchargés, voulez vous importer la maquette ?"
 
     TITLE_GEOLOC = "1. Géolocalisation et affichage d'arrière plan"
     TITLE_EMPRISE = "2. Définissez l'emprise de l'extraction"
     TITLE_LAYER_CHOICE = "3. Choisissez les couches"
     TITLE_LIST_TO_DOWNLOAD = "4. Liste des fichiers à télécharger"
+
+
 
     MARGIN = 10
     LARG_COORD = 130
@@ -347,9 +370,10 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddButton(self.BTON_N_MIN, flags=c4d.BFH_MASK, initw=0, inith=0, name="copier")
         self.GroupEnd()
 
-        self.GroupBegin(500, flags=c4d.BFH_CENTER, cols=2, rows=1)
+        self.GroupBegin(500, flags=c4d.BFH_CENTER, cols=3, rows=1)
         self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, 0)
 
+        self.AddButton(self.BTON_DRAW_RECTANGLE, flags=c4d.BFH_MASK, initw=150, inith=20, name="dessiner une emprise")
         self.AddButton(self.BTON_FROM_OBJECT, flags=c4d.BFH_MASK, initw=150, inith=20, name="depuis la sélection")
         self.AddButton(self.BTON_FROM_VIEW, flags=c4d.BFH_MASK, initw=150, inith=20, name="depuis la vue")
 
@@ -387,12 +411,22 @@ class DlgBbox(c4d.gui.GeDialog):
         # LISTE DES TELECHARGEMNT
         self.AddStaticText(701, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LIST_TO_DOWNLOAD, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(700, flags=c4d.BFH_CENTER, cols=1, rows=1)
+        self.GroupBegin(700, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-
-        self.AddButton(self.BTON_GET_URLS_DOWNLOAD, flags=c4d.BFH_MASK, initw=250, inith=20, name="Téléchargement")
-
+        self.AddCheckbox(self.CHECKBOX_SWISSTOPO_FOLDER, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_SWISSTOPO_FOLDER,)
+        self.AddButton(self.BTON_GET_URLS_DOWNLOAD, flags=c4d.BFH_MASK, initw=250, inith=20, name="Téléchargement")      
+        
         self.GroupEnd()
+
+        #BOUTON pour l'import de la maquette
+        #pour qu'il s'active il faut que les fichiers soient téléchargés
+        #attention pour que masquer le bouton il faut le metrre dans un groupe qui doit aussi être dans un groupe !  
+        if self.GroupBegin(self.ID_MAIN_GROUP, flags=c4d.BFH_CENTER):
+            if self.GroupBegin(self.ID_GROUP_IMPORT_MODEL, flags=c4d.BFH_CENTER, cols=1, rows=1):
+                self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
+                self.AddButton(self.BTON_IMPORT_MODEL, flags=c4d.BFH_MASK, initw=250, inith=20, name="Importer la maquette")
+                self.GroupEnd()
+            self.GroupEnd()
 
         #ETAT DU TELECHARGEMENT
         #self.GroupBegin(700, flags=c4d.BFH_SCALEFIT, cols=1, rows=1)
@@ -409,6 +443,13 @@ class DlgBbox(c4d.gui.GeDialog):
         self.SetMeter(self.N_MIN, 0.0)
         self.SetMeter(self.E_MIN, 0.0)
         self.SetMeter(self.E_MAX, 0.0)
+
+        #masquage du bouton d'import de la maquette tant que l'on n'a pas
+        #téléchargé tous les fichiers
+        self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = True)
+
+        self.SetBool(self.CHECKBOX_SWISSTOPO_FOLDER,True)
+
         return True
 
     def getBbox(self):
@@ -467,6 +508,16 @@ class DlgBbox(c4d.gui.GeDialog):
         #Affichage CarteNationale
         if id ==self.BTON_CN:
             c4d.CallCommand(1058394) # #$01carte nationale 10'000
+
+        
+        #DESSINER RECTANGLE
+        if id==self.BTON_DRAW_RECTANGLE:
+            if c4d.plugins.FindPlugin(ID_RECTANGLE_TOOL):
+                #self.mode_draw = True
+                c4d.CallCommand(ID_RECTANGLE_TOOL)
+                #TODO -> récupérer directement le rectangle une fois dessiné
+            else:
+                c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_RECTANGLE)
 
 
         # DEPUIS L'OBJET ACTIF
@@ -646,7 +697,16 @@ class DlgBbox(c4d.gui.GeDialog):
                 #TELECHARGEMENT
                 doc = c4d.documents.GetActiveDocument()
 
-                pth = c4d.storage.LoadDialog(title = 'Dossier pour les fichiers à télécharger',def_path = doc.GetDocumentPath(),flags = c4d.FILESELECT_DIRECTORY)
+                path_doc = doc.GetDocumentPath()
+                pth = None
+                #si le fichier est enregistré et que
+                #la case "dossier swistopo" est cochée on crée automatiquement le dossier
+                if self.GetBool(self.CHECKBOX_SWISSTOPO_FOLDER) and path_doc:
+                    pth = os.path.join(path_doc,FOLDER_NAME_SWISSTOPO)
+                    if not os.path.isdir(pth):
+                        os.mkdir(pth)
+                if not pth:
+                    pth = c4d.storage.LoadDialog(title = 'Dossier pour les fichiers à télécharger',def_path = doc.GetDocumentPath(),flags = c4d.FILESELECT_DIRECTORY)
                 if not pth:
                     return True
                 #pth = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo'
@@ -675,8 +735,17 @@ class DlgBbox(c4d.gui.GeDialog):
 
                     self.dirs.append(path_dir)
 
-                    self.dwload_lst.append((url,fn))
+                    #si le fichier existe on ne le télécharge pas
+                    #attention pour les dxf il s'agit de fichier zip qui sont ensuite décompressés!
+                    #l'extension se termine par '.dxf.zip' -> je supprime seulement le .zip
+                    fn_temp = fn.replace('.zip','')
+                    if not os.path.isfile(fn_temp):                            
+                        self.dwload_lst.append((url,fn))
 
+                #si la liste est vide on quitte et on avertit
+                #if not self.dwload_lst:
+                    #c4d.gui.MessageDialog(TXT_NO_FILE_TO_DOWNLOAD)
+                    #return
 
                 #LANCEMENT DU THREAD
                 self.thread = ThreadDownload(self.dwload_lst)
@@ -711,10 +780,14 @@ class DlgBbox(c4d.gui.GeDialog):
 
         self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'nombre de fichiers téléchargés : {nb}/{len(self.dwload_lst)}')
 
-        #si le thread est terminé on arr^ête le Timer et on lance la création des vrt
+        #si le thread est terminé on arrête le Timer et on lance la création des vrt
         if not self.thread.IsRunning():
             self.SetTimer(0)
             self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'Téléchargement terminé')
+            if c4d.gui.MessageDialog(self.TXT_IMPORT_MODEL):
+                print('importation de la maquette')
+            self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
+            self.LayoutChanged(self.ID_MAIN_GROUP)
             
             
 

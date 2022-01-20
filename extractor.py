@@ -17,6 +17,9 @@ import subprocess
 sys.path.append(os.path.dirname(__file__))
 from thread_download import ThreadDownload
 
+from maquette_depuis_dossier_swissextractor import main as import_maquette
+
+
 CONTAINER_ORIGIN = 1026473
 
 ID_RECTANGLE_TOOL = 1058813
@@ -240,6 +243,28 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax):
                 res.append(dic['href'])
     return res
 
+def suppr_doublons_bati3D(lst_url):    
+    dico = {}
+    dxf_files = [url for url in lst_url if url[-8:]=='.dxf.zip']
+    for dxf in dxf_files:
+        #on a une url du genre :
+        #https://data.geo.admin.ch/ch.swisstopo.swissbuildings3d_2/swissbuildings3d_2_2021-09_1300-24/swissbuildings3d_2_2021-09_1300-24_2056_5728.dxf.zip
+        #on split par /
+        #et on prend le dossier parent qui contient la date et le n° de feuille (avant-dernier ->[-2]):
+        #'swissbuildings3d_2_2021-09_1300-24'
+        # le *a sert simplement à récupérer tout ce qui a avant date et feuille
+
+        *a,date,feuille = dxf.split('/')[-2].split('_')
+        #on fait un dico avec le nom de la feuille comme clé
+        #et une liste de tuple (date, url_du_dxf)
+        dico.setdefault(feuille,[]).append((date,dxf))
+        
+    res = []
+    for k,liste in dico.items():
+        #en triant la liste en décroissant on a le fichier le plus récent en premier
+        res.append(sorted(liste,reverse=True)[0][1])
+    return res
+
 class DlgBbox(c4d.gui.GeDialog):
     N_MIN = 1015
     N_MAX = 1016
@@ -286,7 +311,7 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_ORTHO2M = "Orthophoto 2m"
     LABEL_ORTHO10CM = "Orthophoto 10cm"
 
-    LABEL_SWISSTOPO_FOLDER = f'dossier "{FOLDER_NAME_SWISSTOPO}"'
+    LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
 
 
     TXT_NO_ORIGIN = "Le document n'est pas géoréférencé !"
@@ -309,6 +334,12 @@ class DlgBbox(c4d.gui.GeDialog):
 
     dico_lieux = None
     lst_lieux = None
+
+
+    doc = None
+    origine = None
+    pth_swisstopo_data = None
+    bbox = None
 
     def CreateLayout(self):
         #lecture du fichier des lieux
@@ -411,11 +442,10 @@ class DlgBbox(c4d.gui.GeDialog):
         # LISTE DES TELECHARGEMNT
         self.AddStaticText(701, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LIST_TO_DOWNLOAD, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(700, flags=c4d.BFH_CENTER, cols=2, rows=1)
+        self.GroupBegin(700, flags=c4d.BFH_CENTER, cols=1, rows=2)
         self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
         self.AddCheckbox(self.CHECKBOX_SWISSTOPO_FOLDER, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_SWISSTOPO_FOLDER,)
-        self.AddButton(self.BTON_GET_URLS_DOWNLOAD, flags=c4d.BFH_MASK, initw=250, inith=20, name="Téléchargement")      
-        
+        self.AddButton(self.BTON_GET_URLS_DOWNLOAD, flags=c4d.BFH_MASK, initw=250, inith=20, name="Téléchargement")        
         self.GroupEnd()
 
         #BOUTON pour l'import de la maquette
@@ -676,6 +706,9 @@ class DlgBbox(c4d.gui.GeDialog):
                 if self.GetBool(self.CHECKBOX_BATI3D):
                     url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['bati3D']
                     lst = get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax)
+
+                    #enlever les doublons, il y a deux versions bati3D 2018 et 2020 !
+                    lst = suppr_doublons_bati3D(lst)
                     urls+= lst
                     #for v in lst : print(v)
                     #print('---------')
@@ -747,6 +780,12 @@ class DlgBbox(c4d.gui.GeDialog):
                     #c4d.gui.MessageDialog(TXT_NO_FILE_TO_DOWNLOAD)
                     #return
 
+                #stockage des infos nécessaires pour la génération de la maquette
+                #dans le Timer
+                self.doc = doc
+                self.pth_swisstopo_data = pth
+                self.bbox = bbox
+
                 #LANCEMENT DU THREAD
                 self.thread = ThreadDownload(self.dwload_lst)
                 self.thread.Start()
@@ -785,7 +824,12 @@ class DlgBbox(c4d.gui.GeDialog):
             self.SetTimer(0)
             self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'Téléchargement terminé')
             if c4d.gui.MessageDialog(self.TXT_IMPORT_MODEL):
-                print('importation de la maquette')
+                ###################################################################
+                #IMPORTATION DE LA MAQUETTE
+                ###################################################################
+                origine = self.doc[CONTAINER_ORIGIN]
+                xmin,ymin,xmax,ymax = self.bbox
+                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax)
             self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
             self.LayoutChanged(self.ID_MAIN_GROUP)
             

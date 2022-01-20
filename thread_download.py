@@ -29,13 +29,13 @@ class ThreadDownload(c4d.threading.C4DThread):
 
                 #si on a un fichier zippé on décompresse
                 if fn_dst[-4:] =='.zip':
-                    zfobj = ZipFile(fn_dst)
-                    for name in zfobj.namelist():
-                        uncompressed = zfobj.read(name)
-                        # save uncompressed data to disk
-                        outputFilename = fn_dst[:-4]
-                        with open(outputFilename,'wb') as output:
-                            output.write(uncompressed)
+                    pth = os.path.dirname(fn_dst)
+                    with ZipFile(fn_dst) as file:
+                        for filename in file.namelist():
+                            temp_fn = file.extract(filename,pth)
+                            #on renomme le fichier comme le fichier zip
+                            os.rename(temp_fn, fn_dst[:-4])
+
                     os.remove(fn_dst)
 
             except Exception as e:

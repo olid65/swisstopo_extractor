@@ -24,6 +24,9 @@ CONTAINER_ORIGIN = 1026473
 
 ID_RECTANGLE_TOOL = 1058813
 
+ID_SWISSTOPO_ORTHO_DISPLAY = 1058393
+ID_SWISSTOPO_CN10_DISPLAY = 1058394
+
 
 FOLDER_NAME_SWISSTOPO = "swisstopo"
 
@@ -314,10 +317,16 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
 
 
+    TXT_NO_PATH_TO_QGIS = "QGis ne semble pas installé sur cette machine, vous pourrez importer les différents fichiers sur votre ordinateur, mais pas importer la maquette dans Cinema4D."
+    TXT_NO_PATH_TO_QGIS_QUESTION = TXT_NO_PATH_TO_QGIS +" Voulez-vous continuer ?"
+    TXT_NO_PATH_TO_QGIS_FINAL = "Sans Qgis l'import de la maquette est imèpossible !"
+
     TXT_NO_ORIGIN = "Le document n'est pas géoréférencé !"
     TXT_NOT_VIEW_TOP = "Vous devez activer une vue de haut !"
     TXT_NO_SELECTION = "Vous devez sélectionner un objet !"
     TXT_MULTI_SELECTION = "Vous devez sélectionner un seul objet !"
+
+    TXT_NO_PLUGIN_SWISSTOPO_DISPLAY = """Le plugin "affichage swisstopo" n'est pas intallé !"""
     TXT_NO_PLUGIN_RECTANGLE = "Le plugin de dessin de rectangle n'est pas installé !"
 
     TXT_IMPORT_MODEL = "Tous les fichiers ont été téléchargés, voulez vous importer la maquette ?"
@@ -480,6 +489,11 @@ class DlgBbox(c4d.gui.GeDialog):
 
         self.SetBool(self.CHECKBOX_SWISSTOPO_FOLDER,True)
 
+        self.qgispath = getPathToQGISbin()
+
+        if not self.qgispath:
+            c4d.gui.MessageDialog(self.TXT_NO_PATH_TO_QGIS)
+
         return True
 
     def getBbox(self):
@@ -532,12 +546,20 @@ class DlgBbox(c4d.gui.GeDialog):
 
         #Affichage OrthoPhoto
         if id ==self.BTON_ORTHO:
-            c4d.CallCommand(1058393) # #$00orthophoto
+            if c4d.plugins.FindPlugin(ID_SWISSTOPO_ORTHO_DISPLAY):
+                #self.mode_draw = True
+                c4d.CallCommand(ID_SWISSTOPO_ORTHO_DISPLAY)
+            else:
+                c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_SWISSTOPO_DISPLAY)
 
 
         #Affichage CarteNationale
         if id ==self.BTON_CN:
-            c4d.CallCommand(1058394) # #$01carte nationale 10'000
+            if c4d.plugins.FindPlugin(ID_SWISSTOPO_CN10_DISPLAY):
+                #self.mode_draw = True
+                c4d.CallCommand(ID_SWISSTOPO_CN10_DISPLAY)
+            else:
+                c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_SWISSTOPO_DISPLAY)
 
         
         #DESSINER RECTANGLE
@@ -679,6 +701,11 @@ class DlgBbox(c4d.gui.GeDialog):
         #TODO : désactiver le bouton si les coordonnées ne sont pas bonnes !
 
         if id == self.BTON_GET_URLS_DOWNLOAD:
+            self.qgispath = getPathToQGISbin()
+            if not self.qgispath:
+                rep = c4d.gui.QuestionDialog(self.TXT_NO_PATH_TO_QGIS_QUESTION)
+                if not rep : return True
+
             bbox = self.getDialogBbox()
 
             if not bbox :
@@ -823,6 +850,12 @@ class DlgBbox(c4d.gui.GeDialog):
         if not self.thread.IsRunning():
             self.SetTimer(0)
             self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'Téléchargement terminé')
+            self.qgispath = getPathToQGISbin()
+
+            if not self.qgispath:
+                c4d.gui.MessageDialog(self.TXT_NO_PATH_TO_QGIS_FINAL)
+                return 
+
             if c4d.gui.MessageDialog(self.TXT_IMPORT_MODEL):
                 ###################################################################
                 #IMPORTATION DE LA MAQUETTE

@@ -6,8 +6,15 @@ import platform
 import urllib, json
 from datetime import datetime
 
+
 CONTAINER_ORIGIN =1026473
 GEOTAG_ID = 1026472
+
+DIRNAME_MNT2M = 'swissalti3d_2m'
+DIRNAME_MNT50CM = 'swissalti3d_50cm'
+DIRNAME_BATI3D = 'swissbuildings3d'
+DIRNAME_ORTHO2M = 'swissimage-dop10_2m'
+DIRNAME_ORTHO10CM = 'swissimage-dop10_10cm'
 
 # Script state in the menu or the command palette
 # Return True or c4d.CMD_ENABLED to enable, False or 0 to disable
@@ -29,9 +36,11 @@ import utils.mnt as importMNT
 import utils.nearest_location
 import utils.dir_extract
 import utils.swissbuildings3D as swissbuildings3D
+import utils.cut_obj_from_spline
+
 
 from utils.swissbuildings3D import SELECTION_NAME_TOITS
-
+import utils.shapefile as shapefile
 
 DOC_NOT_IN_METERS_TXT = "Les unités du document ne sont pas en mètres, si vous continuez les unités seront modifiées.\nVoulez-vous continuer ?"
 CONTAINER_ORIGIN =1026473
@@ -40,7 +49,8 @@ EPAISSEUR = 10 #épaisseur du socle depuis le points minimum
 
 NAME_SELECTION_MNT = 'mnt'
 
-FORMAT_IMAGES = '.png'
+FORMAT_IMAGES = '.jpg'
+FORMAT_IMAGES_GDAL = 'JPEG'
 
 
 def empriseVueHaut(bd, origine):
@@ -74,6 +84,66 @@ def empriseObject(obj, origine):
     maxi = c4d.Vector(max([p.x for p in pts]), max([p.y for p in pts]), max([p.z for p in pts])) + origine
 
     return mini, maxi
+
+CONTAINER_ORIGIN =1026473
+
+def fichierPRJ(fn):
+    fn = os.path.splitext(fn)[0]+'.prj'
+    f = open(fn,'w')
+    f.write("""PROJCS["CH1903+_LV95",GEOGCS["GCS_CH1903+",DATUM["D_CH1903+",SPHEROID["Bessel_1841",6377397.155,299.1528128]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Hotine_Oblique_Mercator_Azimuth_Center"],PARAMETER["latitude_of_center",46.95240555555556],PARAMETER["longitude_of_center",7.439583333333333],PARAMETER["azimuth",90],PARAMETER["scale_factor",1],PARAMETER["false_easting",2600000],PARAMETER["false_northing",1200000],UNIT["Meter",1]]""")
+    f.close()
+
+def createOutline(sp,distance,doc):
+    bc = c4d.BaseContainer()
+    bc[c4d.MDATA_SPLINE_OUTLINE] = distance
+    bc[c4d.MDATA_SPLINE_OUTLINESEPARATE] = True
+    res = c4d.utils.SendModelingCommand(command = c4d.MCOMMAND_SPLINE_CREATEOUTLINE,
+                                list = [sp],
+                                mode = c4d.MODELINGCOMMANDMODE_ALL,
+                                bc = bc,
+                                doc = doc)
+    if res :
+        return res[0]
+    else :
+        return None
+
+def shapefileFromSpline(sp,doc,fn,buffer = 0):
+    origine = doc[CONTAINER_ORIGIN]
+    if not origine: return None
+
+    if buffer :
+        sp = createOutline(sp,buffer,doc)
+        if not sp :
+            print("problème outline")
+            return
+    nb_seg = sp.GetSegmentCount()
+    mg = sp.GetMg()
+    pts = [p*mg+origine for p in sp.GetAllPoints()]
+
+    #UN SEUL SEGMENT
+    if not nb_seg :
+        poly = [[[p.x,p.z] for p in pts]]
+
+    #MULTISEGMENT (attention avec segments interne à un autre il faut les points antihoraire)
+    else:
+        poly = []
+        id_pt = 0
+        for i in range(nb_seg):
+            cnt = sp.GetSegment(i)['cnt']
+            poly.append([[p.x,p.z] for p in pts[id_pt:id_pt+cnt]])
+            id_pt +=cnt
+
+    with shapefile.Writer(fn,shapefile.POLYGON) as w:
+        w.field('id','I')
+        w.record(1)
+        w.poly(poly)
+
+        fichierPRJ(fn)
+    
+    if os.path.isfile(fn):
+        return fn
+    
+    return None
 
 
 def selectEdgesContour(op):
@@ -237,7 +307,7 @@ def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
 
     return False
 
-def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,form = None, path_to_gdal_translate = None):
+def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,taille_maille = None,form = None, path_to_gdal_translate = None):
     """normalement l'extension du fichier de destination permet le choix du format (à vérifier)
        si on a du .png ou du .jpg un fichier wld est généré"""
 
@@ -260,11 +330,36 @@ def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,form = None, pat
     # (constaté sur PC)
     if form :
         f = f'-of {form}'
-    req = f'"{path_to_gdal_translate}" {f} {wld} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
+    
+    if taille_maille :
+        req = f'"{path_to_gdal_translate}" {f} {wld} -tr {taille_maille} {taille_maille} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
+    else:
+        req = f'"{path_to_gdal_translate}" {f} {wld} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
+
+    
     output = subprocess.check_output(req,shell=True)
     if os.path.isfile(raster_dst):
         return raster_dst
 
+    return False
+
+def extractFromSpline(fn_shp,raster_srce, raster_dst,cellsize, form = 'AAIGrid', path_to_gdalwarp = None):
+    if not path_to_gdalwarp:
+        path_to_QGIS_bin = getPathToQGISbin()
+        if path_to_QGIS_bin:
+            path_to_gdalwarp = gdalBIN_OK(path_to_QGIS_bin, exe = 'gdalwarp')
+
+    if not path_to_gdalwarp:
+        c4d.gui.MessageDialog("L'extraction est impossible, gdal_translate non trouvé")
+        return False
+    
+    layer_name = os.path.basename(fn_shp)[:-4]
+    req = f"{path_to_gdalwarp} -overwrite -of {form} -cutline {fn_shp} -tr {cellsize} {cellsize} -cl {layer_name} -crop_to_cutline {raster_srce} {raster_dst}"
+    output = subprocess.check_output(req,shell=True)
+    
+    if os.path.isfile(raster_dst):
+        return raster_dst
+    
     return False
 
 def dirImgToTextFile(path_dir, ext = '.tif'):
@@ -371,15 +466,90 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None):
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
 
     lst_imgs =[]
+    lst_asc = []
+
+    #création du shapefile pour le découpage
+    if spline_decoupe:
+        fn_shp = os.path.join(pth,'__emprise__.shp')
+        fn_shp = shapefileFromSpline(spline_decoupe,doc,fn_shp,buffer = 2*taille_maille)
+
+    if mnt2m:
+        pth_tuiles_mnt2m = os.path.join(pth,DIRNAME_MNT2M)
+        if os.path.isdir(pth_tuiles_mnt2m):
+            #VRT
+            fn_mnt2m_vrt = createVRTfromDir(pth_tuiles_mnt2m, path_to_gdalbuildvrt = None)
+            #extraction mnt
+            fn_mnt2m = fn_mnt2m_vrt.replace('.vrt','.asc')
+            if spline_decoupe and fn_shp :
+                extractFromSpline(fn_shp,fn_mnt2m_vrt, fn_mnt2m,taille_maille, form = 'AAIGrid', path_to_gdalwarp = None)
+            else:
+                extractFromBbox(fn_mnt2m_vrt, fn_mnt2m,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)
+
+            if os.path.isfile(fn_mnt2m):
+                lst_asc.append(fn_mnt2m)
+    
+    if mnt50cm:
+        pth_tuiles_mnt50cm = os.path.join(pth,DIRNAME_MNT50CM)
+        if os.path.isdir(pth_tuiles_mnt50cm):
+            #VRT
+            fn_mnt50cm_vrt = createVRTfromDir(pth_tuiles_mnt50cm, path_to_gdalbuildvrt = None)
+            #extraction mnt
+            fn_mnt50cm = fn_mnt50cm_vrt.replace('.vrt','.asc')
+            if spline_decoupe and fn_shp :
+                extractFromSpline(fn_shp,fn_mnt50cm_vrt, fn_mnt50cm,taille_maille, form = 'AAIGrid', path_to_gdalwarp = None)
+            else:
+                extractFromBbox(fn_mnt50cm_vrt, fn_mnt50cm,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)
+
+            if os.path.isfile(fn_mnt50cm):
+                lst_asc.append(fn_mnt50cm)
+
+    if ortho2m:
+        pth_tuiles_ortho2m = os.path.join(pth,DIRNAME_ORTHO2M)
+        if os.path.isdir(pth_tuiles_ortho2m):
+            #VRT
+            fn_ortho2m_vrt = createVRTfromDir(pth_tuiles_ortho2m, path_to_gdalbuildvrt = None)
+            #extraction 
+            path_dir_imgs = tex_folder(doc, subfolder = 'swisstopo_images')
+            nom_img = os.path.splitext(os.path.basename(fn_ortho2m_vrt))[0]
+            nom_img+=suffixe_img + FORMAT_IMAGES
+
+            fn_ortho2m = os.path.join(path_dir_imgs,nom_img)
+
+            #TODO : rotation et découpage de l'image selon spline_decoupe
+            extractFromBbox(fn_ortho2m_vrt, fn_ortho2m,xmin,ymin,xmax,ymax,taille_maille = 2 ,form = FORMAT_IMAGES_GDAL,path_to_gdal_translate = None)
+
+            if os.path.isfile(fn_ortho2m):
+                lst_imgs.append(fn_ortho2m)
+    
+    if ortho10cm:
+        pth_tuiles_ortho10cm = os.path.join(pth,DIRNAME_ORTHO10CM)
+        if os.path.isdir(pth_tuiles_ortho10cm):
+            #VRT
+            fn_ortho10cm_vrt = createVRTfromDir(pth_tuiles_ortho10cm, path_to_gdalbuildvrt = None)
+            #extraction 
+            path_dir_imgs = tex_folder(doc, subfolder = 'swisstopo_images')
+            nom_img = os.path.splitext(os.path.basename(fn_ortho10cm_vrt))[0]
+            nom_img+=suffixe_img + FORMAT_IMAGES
+
+            fn_ortho10cm = os.path.join(path_dir_imgs,nom_img)
+
+            #TODO : rotation et découpage de l'image selon spline_decoupe
+            extractFromBbox(fn_ortho10cm_vrt, fn_ortho10cm,xmin,ymin,xmax,ymax,taille_maille = 0.1 ,form = FORMAT_IMAGES_GDAL,path_to_gdal_translate = None)
+
+            if os.path.isfile(fn_ortho10cm):
+                lst_imgs.append(fn_ortho10cm)
+            
+
+
 
     #création des fichiers vrt pour les rasters
-    for directory in [x[0] for x in os.walk(pth)]:
+    """for directory in [x[0] for x in os.walk(pth)]:
         name = os.path.basename(directory)
         if 'swissalti3d' in name or 'swissimage' in name:
             #TODO : s'il y a un déjà un fichier VRT regarder si l'emprise est ok
@@ -401,9 +571,9 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax):
 
             elif 'swissalti3d' in name:
                 raster_dst = vrt_file.replace('.vrt','.asc')
-                extractFromBbox(vrt_file, raster_dst,xmin,ymin,xmax,ymax,form = 'AAIGrid',path_to_gdal_translate = None)
+                extractFromBbox(vrt_file, raster_dst,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)"""
 
-    lst_asc = [fn_asc for fn_asc in glob(os.path.join(pth,'*.asc'))]
+    #lst_asc = [fn_asc for fn_asc in glob(os.path.join(pth,'*.asc'))]
     #lst_dxf = get_swissbuildings3D_dxfs(pth)
     #lst_imgs = get_imgs_georef(pth)
 
@@ -430,7 +600,16 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax):
     mnt = None
     cube_mnt = None
     for fn_asc in lst_asc:
-        mnt = importMNT.terrainFromASC(fn_asc)
+        mnt = importMNT.terrainFromASC(fn_asc,doc)
+        if spline_decoupe:
+            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+            if volume_decoupe:
+                mnt_decoupe = utils.cut_obj_from_spline.decoupeMNTfromVolume(mnt,volume_decoupe)
+                if mnt_decoupe :
+                    mnt.Remove()
+                    mnt = mnt_decoupe
+
+
         #socle
         if mnt:
             alt_min = socle(mnt,doc)
@@ -452,8 +631,15 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax):
 
 
     #Swissbuidings3D
-    buildings = swissbuildings3D.importSwissBuidings(pth, doc, cube_mnt)
-    doc.InsertObject(buildings)
+    if bati3D:
+        if spline_decoupe:
+            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+            buildings = swissbuildings3D.importSwissBuidings(pth, doc, volume_decoupe)
+        else:
+            buildings = swissbuildings3D.importSwissBuidings(pth, doc, cube_mnt)
+        
+        if buildings :
+            doc.InsertObject(buildings)
 
     #IMAGES
     #si on a un mnt on le sélectionne pour que l'image se plaque dessus'

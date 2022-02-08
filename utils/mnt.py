@@ -14,25 +14,29 @@ def insert_geotag(obj, origine):
     geotag[CONTAINER_ORIGIN] = origine
     obj.InsertTag(geotag)
 
-
-def polygonise(obj, nb_rows, nb_cols):
+def polygonise(obj, nb_rows, nb_cols, nodata_ids = None):
     id_poly = 0
     id_pt = 0
+    ids_nodata_polys = []
     for r in range(nb_rows):
         for c in range(nb_cols):
             if c < (nb_cols - 1) and r < (nb_rows - 1):
-                try:
-                    #id_pt, id_pt + nb_cols, id_pt + 1 + nb_cols, id_pt + 1
-                    # id_pt, id_pt + 1, id_pt + 1 + nb_cols, id_pt + nb_cols
+                a,b,c,d = (id_pt, id_pt + 1, id_pt + 1 + nb_cols, id_pt + nb_cols)
+                obj.SetPolygon(id_poly, c4d.CPolygon(a,b,c,d))
 
-                    obj.SetPolygon(id_poly, c4d.CPolygon(id_pt, id_pt + 1, id_pt + 1 + nb_cols, id_pt + nb_cols))
-                except:
-                    print (id_poly, '->', (id_pt, id_pt + nb_cols, id_pt + 1 + nb_cols, id_pt + 1))
                 id_poly += 1
             id_pt += 1
+    return
+    if ids_nodata_polys:
+        selTag = c4d.SelectionTag(c4d.Tpolygonselection)
+        selTag.SetName('Nodata')
+        obj.InsertTag(selTag)
+        bs = selTag.GetBaseSelect()
+        for i in ids_nodata_polys:
+            bs.Select(i)
 
 
-def terrainFromASC(fn):
+def terrainFromASC(fn, doc):
     """Attention le doc doit être en mètres"""
     name = os.path.basename(fn).split('.')[0]
 
@@ -85,12 +89,23 @@ def terrainFromASC(fn):
     with open(fn, 'r') as file:
         # on saute l'entête
         for i in range(nb): file.readline()
-
         nb_pts = ncols * nrows
         nb_poly = (ncols - 1) * (nrows - 1)
         poly = c4d.PolygonObject(nb_pts, nb_poly)
         poly.SetName(name)
-        origine = c4d.Vector(xcorner, 0, ycorner + nrows * dy)
+        
+        #j'ai rajouté +dx/2 et -dy/2 car le point est au centre du pixel
+        origine = c4d.Vector(xcorner+dx/2, 0, ycorner + nrows * dy-dy/2)
+        
+        origine_doc = doc[CONTAINER_ORIGIN]
+        if not origine_doc:
+            doc[CONTAINER_ORIGIN] = origine
+            origine_doc = origine
+        
+        transl = origine - origine_doc
+
+        nodata_ids = []
+        pts = []
 
         pos = c4d.Vector(0)
         i = 0
@@ -100,22 +115,40 @@ def terrainFromASC(fn):
                     val = val.replace(",", ".")
 
                 y = float(val)
-                if y == nodata: y = 0.0
+                if y == nodata:
+                    nodata_ids.append(i)
+                    y = 0.0
                 pos.y = y
-                poly.SetPoint(i, pos)
+                pts.append(c4d.Vector(pos+transl))
                 pos.x += dx
                 i += 1
             pos.x = 0
             pos.z -= dy
 
-    polygonise(poly, nrows, ncols)
-    insert_geotag(poly, origine)
+    poly.SetAllPoints(pts)
+    polygonise(poly, nrows, ncols,nodata_ids)
+    #insert_geotag(poly, origine)
     tag = c4d.BaseTag(c4d.Tphong)
     tag[c4d.PHONGTAG_PHONG_ANGLELIMIT] = True
     poly.InsertTag(tag)
 
+    #EFFACEMENT DES POINTS NODATA
+    if nodata_ids:
+        bs = poly.GetPointS()
+        bs.DeselectAll()
+
+        for i in nodata_ids:
+            bs.Select(i)
+
+        # delete selected points
+        mode = c4d.MODELINGCOMMANDMODE_POINTSELECTION
+        res = c4d.utils.SendModelingCommand(c4d.MCOMMAND_DELETE, list = [poly], doc = doc, mode = mode)
+
+
     poly.Message(c4d.MSG_UPDATE)
     return poly
+
+
 
 
 def main(fn=None):
@@ -125,6 +158,7 @@ def main(fn=None):
     data.SetUnitScale(1, c4d.DOCUMENT_UNIT_M)
     doc[c4d.DOCUMENT_DOCUNIT] = data
 
+    #fn = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo/meyrin3/swisstopo/swissalti3d_50cm_decoupe.asc'
     if not fn:
         fn = c4d.storage.LoadDialog()
     # fn = '/Users/donzeo/Documents/Mandats/Concours_RADE_2017/C4D/SIG/MNT_2013_50cm.asc'
@@ -135,7 +169,7 @@ def main(fn=None):
         return
     # fn = '/Volumes/HD_OD/Eoliennes_Mollendruz/SIG/ARC_leman_def/test100MNT.asc'
 
-    terrain = terrainFromASC(fn)
+    terrain = terrainFromASC(fn, doc)
 
     doc.InsertObject(terrain)
     doc.SetActiveObject(terrain)

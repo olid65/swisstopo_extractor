@@ -27,6 +27,10 @@ ID_RECTANGLE_TOOL = 1058813
 ID_SWISSTOPO_ORTHO_DISPLAY = 1058393
 ID_SWISSTOPO_CN10_DISPLAY = 1058394
 
+#NOMBRE DE POLYGONES MAX POUR UN MNT
+#AU DESSUS ON NE PEUT PAS CHARGER
+NB_POLYGONES_MAX = 2000000
+
 
 FOLDER_NAME_SWISSTOPO = "swisstopo"
 
@@ -38,7 +42,7 @@ DIC_LAYERS = {'ortho':'ch.swisstopo.swissimage-dop10',
               'bati3D':'ch.swisstopo.swissbuildings3d_2',
               }
 
-#Fichier pour le noms de lieu au m^ême emplacement que ce fichier
+#Fichier pour le noms de lieu au même emplacement que ce fichier
 LOCATIONS_FILE = os.path.join(os.path.dirname(__file__),'noms_lieux.json')
 
 
@@ -108,7 +112,6 @@ def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
         #on supprime le fichier txt
         os.remove(lst_img_txt)
         if os.path.isfile(fn_vrt):
-
             return fn_vrt
 
     return False
@@ -268,6 +271,19 @@ def suppr_doublons_bati3D(lst_url):
         res.append(sorted(liste,reverse=True)[0][1])
     return res
 
+def isRectangleNordSud(sp):
+    if sp.GetPointCount()!= 4:
+        return False
+
+    p1,p2,p3,p4 = [p*sp.GetMg() for p in sp.GetAllPoints()]
+
+    for p1,p2 in zip([p1,p2,p3,p4],[p2,p3,p4,p1]):
+        v = p2-p1
+
+        if v.x !=0 and v.z !=0:
+            return False
+    return True
+
 class DlgBbox(c4d.gui.GeDialog):
     N_MIN = 1015
     N_MAX = 1016
@@ -295,6 +311,10 @@ class DlgBbox(c4d.gui.GeDialog):
     CHECKBOX_BATI3D = 1502
     CHECKBOX_ORTHO2M = 1503
     CHECKBOX_ORTHO10CM = 1504
+    ID_TXT_NBRE_POLYS_MNT = 1505
+    ID_TAILLE_MAILLE_MNT = 1506
+    ID_CHECKBOX_CUT_WITH_SPLINE = 1507
+
 
     CHECKBOX_SWISSTOPO_FOLDER = 1510
 
@@ -315,6 +335,10 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_ORTHO10CM = "Orthophoto 10cm"
 
     LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
+
+    TXT_NO_SURFACE = "Pas d'emprise définie"
+    TXT_SURFACE_NOMBRE_POLYS_MNT = "Nombre de polygones pour le MNT : "
+    TXT_CUT_WITH_SPLINE = "Découpage selon la spline sélectionnée"
 
 
     TXT_NO_PATH_TO_QGIS = "QGis ne semble pas installé sur cette machine, vous pourrez importer les différents fichiers sur votre ordinateur, mais pas importer la maquette dans Cinema4D."
@@ -349,6 +373,18 @@ class DlgBbox(c4d.gui.GeDialog):
     origine = None
     pth_swisstopo_data = None
     bbox = None
+    taille_maille = None
+    mini = maxi = None
+    total_polys = 0
+
+    spline_cut = None
+    mnt2m = False
+    mnt50cm = False
+    bati3D = False
+    ortho2m = False
+    ortho10cm = False
+    
+
 
     def CreateLayout(self):
         #lecture du fichier des lieux
@@ -433,8 +469,8 @@ class DlgBbox(c4d.gui.GeDialog):
         #CHOIX COUCHES
         self.AddStaticText(401, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LAYER_CHOICE, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=3)
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
+        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=4)
+        self.GroupBegin(601, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_MNT2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT2M)
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
@@ -444,6 +480,13 @@ class DlgBbox(c4d.gui.GeDialog):
         self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_ORTHO2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO2M)
         self.AddCheckbox(self.CHECKBOX_ORTHO10CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO10CM)
+        self.GroupEnd()
+
+        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=1, rows=3)
+        self.GroupBorderSpace(self.MARGIN , self.MARGIN, self.MARGIN, self.MARGIN)
+        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name='nombre polygones MNT', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
+        self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
 
         self.GroupEnd()
@@ -478,10 +521,21 @@ class DlgBbox(c4d.gui.GeDialog):
         return True
 
     def InitValues(self):
+        self.doc = c4d.documents.GetActiveDocument()
         self.SetMeter(self.N_MAX, 0.0)
         self.SetMeter(self.N_MIN, 0.0)
         self.SetMeter(self.E_MIN, 0.0)
         self.SetMeter(self.E_MAX, 0.0)
+
+        self.SetBool(self.CHECKBOX_MNT2M,True)
+        self.SetBool(self.CHECKBOX_BATI3D,True)
+        self.SetBool(self.CHECKBOX_ORTHO2M,True)
+        self.SetMeter(self.ID_TAILLE_MAILLE_MNT, 2.0)
+        self.taille_maille = 2.0
+
+        self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+
+        self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
 
         #masquage du bouton d'import de la maquette tant que l'on n'a pas
         #téléchargé tous les fichiers
@@ -518,11 +572,45 @@ class DlgBbox(c4d.gui.GeDialog):
 
         plane.SetAbsPos(pos)
         return plane
+    
+    def modifBbox(self):
+        self.SetMeter(self.N_MAX, self.maxi.z)
+        self.SetMeter(self.N_MIN, self.mini.z)
+        self.SetMeter(self.E_MIN, self.mini.x)
+        self.SetMeter(self.E_MAX, self.maxi.x)
+        self.majNombresPolys()
+    
+    def majNombresPolys(self):
+        larg = self.maxi.x - self.mini.x
+        haut = self.maxi.z - self.mini.z
+
+        val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+
+        if not larg or not haut or not val_px:
+            self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+        else:
+            nb_px_larg = round(round(larg /val_px,0))
+            nb_px_haut = round(haut/val_px,0)
+            self.total_polys = round(nb_px_larg * nb_px_haut)
+            total_txt = f'{self.total_polys:,}'.replace(",","'")
+            txt = f'{total_txt} polygones (boîte englobante)'
+            self.SetString(self.ID_TXT_NBRE_POLYS_MNT,txt)
+        
+        if self.total_polys > NB_POLYGONES_MAX:
+            self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
+        else:
+            self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
+
+        
+        
+
+
 
     def Command(self, id, msg):
         #########
         # 1 : GEOLOCALISATION
         #########
+
 
         # Choix du lieu
         if id == self.COMBO_LOCALISATION:
@@ -560,7 +648,21 @@ class DlgBbox(c4d.gui.GeDialog):
                 c4d.CallCommand(ID_SWISSTOPO_CN10_DISPLAY)
             else:
                 c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_SWISSTOPO_DISPLAY)
+        
+        ##########################
+        #EMPRISE
+        ############################
 
+        #VALEURS BBOX
+        if id==self.N_MAX or id==self.N_MIN or id==self.E_MIN or id==self.E_MAX:
+            zmax = self.GetFloat(self.N_MAX)
+            zmin = self.GetFloat(self.N_MIN)
+            xmin = self.GetFloat(self.E_MIN)
+            xmax = self.GetFloat(self.E_MAX)
+            self.mini = c4d.Vector(xmin,0,zmin)
+            self.maxi = c4d.Vector(xmax,0,zmax)
+
+            self.majNombresPolys()
         
         #DESSINER RECTANGLE
         if id==self.BTON_DRAW_RECTANGLE:
@@ -589,11 +691,26 @@ class DlgBbox(c4d.gui.GeDialog):
                 return True
             obj = op[0]
 
-            mini, maxi = empriseObject(obj, origine)
-            self.SetMeter(self.N_MAX, maxi.z)
-            self.SetMeter(self.N_MIN, mini.z)
-            self.SetMeter(self.E_MIN, mini.x)
-            self.SetMeter(self.E_MAX, maxi.x)
+            self.mini, self.maxi = empriseObject(obj, origine)
+            self.modifBbox()
+
+            #si une spline est sélectionnée
+            #et que ce n'est pas un rectangle Nord-Sud
+            #on active le découpage par spline
+            #ID_CHECKBOX_CUT_WITH_SPLINE
+
+            sp = obj.GetRealSpline()
+            if sp and not isRectangleNordSud(sp):
+                self.SetBool(self.ID_CHECKBOX_CUT_WITH_SPLINE,True)
+                self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, True)
+                self.spline_cut = sp
+                
+            else:
+                self.SetBool(self.ID_CHECKBOX_CUT_WITH_SPLINE,False)
+                self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
+                self.spline_cut = None
+                
+            
 
         # DEPUIS LA VUE DE HAUT
         if id == self.BTON_FROM_VIEW:
@@ -609,11 +726,8 @@ class DlgBbox(c4d.gui.GeDialog):
                 c4d.gui.MessageDialog(self.TXT_NOT_VIEW_TOP)
                 return True
 
-            mini, maxi, larg, haut = empriseVueHaut(bd, origine)
-            self.SetMeter(self.N_MAX, maxi.z)
-            self.SetMeter(self.N_MIN, mini.z)
-            self.SetMeter(self.E_MIN, mini.x)
-            self.SetMeter(self.E_MAX, maxi.x)
+            self.mini, self.maxi, larg, haut = empriseVueHaut(bd, origine)
+            self.modifBbox()
 
         # COPIER LES VALEURS (et print)
         if id == self.BTON_COPY_ALL:
@@ -654,7 +768,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
             bbox2shapefile(mini, maxi)
 
-        # BOUTONS COPIE COORDONNöE
+        # BOUTONS COPIE COORDONNEES
         if id == self.BTON_N_MIN:
             c4d.CopyStringToClipboard(str(self.GetFloat(self.N_MIN)))
 
@@ -674,12 +788,18 @@ class DlgBbox(c4d.gui.GeDialog):
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_MNT50CM):
                 self.SetBool(self.CHECKBOX_MNT50CM,False)
+            self.taille_maille = 2
+            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille)
+            self.taille_maille = 2
+            self.majNombresPolys()
 
         if id == self.CHECKBOX_MNT50CM:
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_MNT2M):
                 self.SetBool(self.CHECKBOX_MNT2M,False)
-
+            self.taille_maille = 0.5
+            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille)
+            self.majNombresPolys()
 
         if id == self.CHECKBOX_BATI3D:
             pass
@@ -693,6 +813,22 @@ class DlgBbox(c4d.gui.GeDialog):
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_ORTHO2M):
                 self.SetBool(self.CHECKBOX_ORTHO2M,False)
+
+
+        #CHANGEMENT TAILLE DE LA MAILLE
+        if id==self.ID_TAILLE_MAILLE_MNT:
+            self.taille_maille = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+            if self.taille_maille >=2 :
+                self.SetBool(self.CHECKBOX_MNT2M,True)
+                self.SetBool(self.CHECKBOX_MNT50CM,False)
+            elif self.taille_maille <0.5 :
+                self.SetMeter(self.ID_TAILLE_MAILLE_MNT,0.5)
+                self.taille_maille = 0.5
+            else:
+                self.SetBool(self.CHECKBOX_MNT2M,False)
+                self.SetBool(self.CHECKBOX_MNT50CM,True)
+
+            self.majNombresPolys()
 
 
         #############################################################
@@ -856,13 +992,19 @@ class DlgBbox(c4d.gui.GeDialog):
                 c4d.gui.MessageDialog(self.TXT_NO_PATH_TO_QGIS_FINAL)
                 return 
 
-            if c4d.gui.MessageDialog(self.TXT_IMPORT_MODEL):
+            if c4d.gui.QuestionDialog(self.TXT_IMPORT_MODEL):
                 ###################################################################
                 #IMPORTATION DE LA MAQUETTE
                 ###################################################################
                 origine = self.doc[CONTAINER_ORIGIN]
                 xmin,ymin,xmax,ymax = self.bbox
-                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax)
+                mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
+                mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
+                bati3D = self.GetBool(self.CHECKBOX_BATI3D)
+                ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
+                ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
+                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = self.spline_cut)
+                #doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None
             self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
             self.LayoutChanged(self.ID_MAIN_GROUP)
             

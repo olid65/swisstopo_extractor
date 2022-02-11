@@ -18,6 +18,8 @@ sys.path.append(os.path.dirname(__file__))
 from thread_download import ThreadDownload
 
 from maquette_depuis_dossier_swissextractor import main as import_maquette
+import utils.trees_esri_rest_api_geojson as trees
+
 
 
 CONTAINER_ORIGIN = 1026473
@@ -311,12 +313,15 @@ class DlgBbox(c4d.gui.GeDialog):
     CHECKBOX_BATI3D = 1502
     CHECKBOX_ORTHO2M = 1503
     CHECKBOX_ORTHO10CM = 1504
-    ID_TXT_NBRE_POLYS_MNT = 1505
-    ID_TAILLE_MAILLE_MNT = 1506
-    ID_CHECKBOX_CUT_WITH_SPLINE = 1507
+    CHECKBOX_TREES = 1506
+    CHECKBOX_FOREST = 1507
+
+    ID_TXT_NBRE_POLYS_MNT = 1508
+    ID_TAILLE_MAILLE_MNT = 1509
+    ID_CHECKBOX_CUT_WITH_SPLINE = 1510
 
 
-    CHECKBOX_SWISSTOPO_FOLDER = 1510
+    CHECKBOX_SWISSTOPO_FOLDER = 1515
 
 
     BTON_GET_URLS_DOWNLOAD = 1600
@@ -333,6 +338,8 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_BATI3D = "Bâtiments 3D"
     LABEL_ORTHO2M = "Orthophoto 2m"
     LABEL_ORTHO10CM = "Orthophoto 10cm"
+    LABEL_TREES = "Arbres isolés"
+    LABEL_FOREST = "Cordons boisés et forêts"
 
     LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
 
@@ -360,8 +367,6 @@ class DlgBbox(c4d.gui.GeDialog):
     TITLE_LAYER_CHOICE = "3. Choisissez les couches"
     TITLE_LIST_TO_DOWNLOAD = "4. Liste des fichiers à télécharger"
 
-
-
     MARGIN = 10
     LARG_COORD = 130
 
@@ -384,8 +389,6 @@ class DlgBbox(c4d.gui.GeDialog):
     ortho2m = False
     ortho10cm = False
     
-
-
     def CreateLayout(self):
         #lecture du fichier des lieux
         if os.path.isfile(LOCATIONS_FILE):
@@ -469,17 +472,25 @@ class DlgBbox(c4d.gui.GeDialog):
         #CHOIX COUCHES
         self.AddStaticText(401, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LAYER_CHOICE, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=4)
+        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=5)
+
         self.GroupBegin(601, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_MNT2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT2M)
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
 
-        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D)
+        self.GroupBegin(606, flags=c4d.BFH_CENTER, cols=1, rows=1)
+        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.LABEL_BATI3D)
+        self.GroupEnd()
 
         self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_ORTHO2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO2M)
         self.AddCheckbox(self.CHECKBOX_ORTHO10CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO10CM)
+        self.GroupEnd()
+
+        self.GroupBegin(605, flags=c4d.BFH_CENTER, cols=2, rows=1)
+        self.AddCheckbox(self.CHECKBOX_TREES, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_TREES)
+        self.AddCheckbox(self.CHECKBOX_FOREST, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_FOREST)
         self.GroupEnd()
 
         self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=1, rows=3)
@@ -488,6 +499,8 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
         self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
+
+        
 
         self.GroupEnd()
 
@@ -530,6 +543,8 @@ class DlgBbox(c4d.gui.GeDialog):
         self.SetBool(self.CHECKBOX_MNT2M,True)
         self.SetBool(self.CHECKBOX_BATI3D,True)
         self.SetBool(self.CHECKBOX_ORTHO2M,True)
+        self.SetBool(self.CHECKBOX_TREES,True)
+        self.SetBool(self.CHECKBOX_FOREST,True)
         self.SetMeter(self.ID_TAILLE_MAILLE_MNT, 2.0)
         self.taille_maille = 2.0
 
@@ -600,10 +615,6 @@ class DlgBbox(c4d.gui.GeDialog):
             self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
         else:
             self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
-
-        
-        
-
 
 
     def Command(self, id, msg):
@@ -890,6 +901,7 @@ class DlgBbox(c4d.gui.GeDialog):
                     #for v in lst : print(v)
                     #print('---------')
 
+
                 #TELECHARGEMENT
                 doc = c4d.documents.GetActiveDocument()
 
@@ -937,6 +949,37 @@ class DlgBbox(c4d.gui.GeDialog):
                     fn_temp = fn.replace('.zip','')
                     if not os.path.isfile(fn_temp):                            
                         self.dwload_lst.append((url,fn))
+                
+                #VEGETATION
+                #TODO : gérer l'origine de manière globale
+                #et gérer le changement de doc !
+                doc = c4d.documents.GetActiveDocument()
+                origine = doc[CONTAINER_ORIGIN]
+
+                #ARBRES ISOLES
+                if self.GetBool(self.CHECKBOX_TREES):
+                    name_file = 'trees.geojson'
+                    fn = fn = os.path.join(pth,name_file)
+
+                    if self.spline_cut:
+                        url = trees.url_geojson_trees(self.spline_cut,origine)
+                    else:
+                        url = trees.url_geojson_trees((self.mini.x,self.mini.z,self.maxi.x,self.maxi.z),origine)
+                    
+                    self.dwload_lst.append((url,fn))
+
+                #FORETS
+                if self.GetBool(self.CHECKBOX_FOREST):
+                    name_file = 'forest.geojson'
+                    fn = fn = os.path.join(pth,name_file)
+
+                    if self.spline_cut:
+                        url = trees.url_geojson_forest(self.spline_cut,origine)
+                    else:
+                        url = trees.url_geojson_forest((self.mini.x,self.mini.z,self.maxi.x,self.maxi.z),origine)
+                    
+                    self.dwload_lst.append((url,fn))
+
 
                 #si la liste est vide on quitte et on avertit
                 #if not self.dwload_lst:
@@ -955,22 +998,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
                 #lancement du timer pour voir l'avancement du téléchargement
                 self.SetTimer(500)
-                return True
-            
-                #création des fichiers vrt pour les rasters
-                for directory in self.dirs:
-                    name = os.path.basename(directory)
-                    if 'swissalti3d' in name or 'swissimage' in name:
-                        vrt_file = createVRTfromDir(directory, path_to_gdalbuildvrt = None)
-    
-                        #+ extraction de l'image'
-                        raster_dst = vrt_file.replace('.vrt','.png')
-    
-                        if 'swissalti3d' in name:
-                            raster_dst = vrt_file.replace('.vrt','.asc')
-                        extractFromBbox(vrt_file, raster_dst,xmin,ymin,xmax,ymax,path_to_gdal_translate = None)
-
-                
+                return True               
 
         return True
 
@@ -1004,6 +1032,35 @@ class DlgBbox(c4d.gui.GeDialog):
                 ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
                 ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
                 import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = self.spline_cut)
+
+                #ARBRES
+                splines_foret = None
+                pts_trees_sommets = None
+
+                #url_base_isoles = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/0'
+                #url_base_forest = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
+                #si on a une spline on coupe selon la spline
+                #if self.spline_cut:
+                    #FORETS
+                    #splines_foret = trees.polygons_from_spline(self.spline_cut,url_base_forest,origine)
+                    #ARBRES ISOLES
+                    #pts_trees_sommets = trees.pts_from_spline(self.spline_cut,url_base_isoles,origine)
+                    
+                #sinon on prend la bbox
+                #else:
+                    #FORETS
+                    #splines_foret = trees.polygons_from_bbox(xmin,ymin,xmax,ymax,url_base_forest,origine)
+                    #ARBRES ISOLES
+                    #pts_trees_sommets = trees.pts_from_bbox(xmin,ymin,xmax,ymax,url_base_isoles,origine)
+
+                if splines_foret:
+                    self.doc.InsertObject(splines_foret)
+                if pts_trees_sommets:
+                    self.doc.InsertObject(pts_trees_sommets)
+                c4d.EventAdd()
+
+
+
                 #doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None
             self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
             self.LayoutChanged(self.ID_MAIN_GROUP)

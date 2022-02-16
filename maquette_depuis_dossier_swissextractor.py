@@ -29,14 +29,14 @@ DIRNAME_ORTHO10CM = 'swissimage-dop10_10cm'
 
 sys.path.append(os.path.dirname(__file__))
 
-
-#ATTENTION à modifier dans plugin ou script définitif
 import utils.raster as raster
 import utils.mnt as importMNT
 import utils.nearest_location
 import utils.dir_extract
 import utils.swissbuildings3D as swissbuildings3D
 import utils.cut_obj_from_spline
+import utils.geojson_trees
+import utils.mograph_trees
 
 
 from utils.swissbuildings3D import SELECTION_NAME_TOITS
@@ -388,7 +388,7 @@ def lv95towgs84(x,y):
 
     return float(json_res['easting']),float(json_res['northing'])
 
-def physical_sky_from_origin(doc, date_heure = '21.06.2022 15:00:00'):
+def physical_sky_from_origin(doc, date_heure = '21.06.2022 17:00:00'):
     Ophysicalsky = 1011146
     sky = c4d.BaseObject(Ophysicalsky)
 
@@ -466,7 +466,7 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
@@ -609,10 +609,8 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
                     mnt.Remove()
                     mnt = mnt_decoupe
 
-
-        #socle
         if mnt:
-            alt_min = socle(mnt,doc)
+            #alt_min = socle(mnt,doc)
             doc.InsertObject(mnt)
             doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mnt)
 
@@ -676,7 +674,65 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             tag = gp.creerTagTex(buildings, displayTag = False)
             tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
 
+    ###################################
+    # ARBRES
+    ###################################
 
+    # il faut un mnt (TODO générer les arbres au sol si on n'a pas de MNT ???)
+    if mnt:
+        if fn_trees:
+            point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
+            trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
+
+            #copie du tag orthophoto
+            tag_ortho = mnt.GetTag(c4d.Ttexture)
+            if tag_ortho:
+                tag_clone = tag_ortho.GetClone()
+                tag_clone[c4d.TEXTURETAG_RESTRICTION]= ''
+                tag_clone[c4d.TEXTURETAG_TILE] = True
+                trees.InsertTag(tag_clone)
+            
+            doc.InsertObject(trees)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,trees)
+
+
+        if fn_forest:
+            splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
+            forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
+
+            #copie du tag orthophoto
+            tag_ortho = mnt.GetTag(c4d.Ttexture)
+            if tag_ortho:
+                tag_clone = tag_ortho.GetClone()
+                tag_clone[c4d.TEXTURETAG_RESTRICTION]= ''
+                tag_clone[c4d.TEXTURETAG_TILE] = True
+                forest.InsertTag(tag_clone)
+
+            doc.InsertObject(forest)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,forest)
+
+
+
+    ##################################
+    #SOCLE MNT
+    ##################################
+    if mnt:
+        alt_min = socle(mnt,doc)
+        #doc.InsertObject(mnt)
+        #doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mnt)
+
+
+        #CUBE pour la découpe des batiments
+        cube_mnt = get_cube_from_obj(mnt)
+        pos = cube_mnt.GetRelPos()
+        #lorsque l'on génére le mnt la position se fait par le geotag
+        #et le déplacement se fait après, du coup c'est le moyen pas très élégant
+        #que j'ai trouvé pour que le cube soit au bon endroit'
+        geotag = mnt.GetTag(GEOTAG_ID)
+        if geotag:
+            cube_mnt
+            pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
+            cube_mnt.SetRelPos(pos)
 
     ##############################################
     #ENVIRONNEMENT
@@ -684,10 +740,36 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     environnement = c4d.BaseObject(c4d.Onull)
     environnement.SetName('environnement')
 
+    #MATERIAU ARRIERE-PLAN
+    mat_back = c4d.BaseMaterial(c4d.Mmaterial)
+    mat_back.SetName('Fond')
+    mat_back[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
+    
+    doc.InsertMaterial(mat_back)
+    doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat_back)
+
     #SOL
     sol = c4d.BaseObject(c4d.Ofloor)
-    sol.SetAbsPos(c4d.Vector(0,alt_min,0))
+    if mnt and alt_min:
+        sol.SetAbsPos(c4d.Vector(0,alt_min,0))
+    #compositing tag pour compositing background
+    tag_comp = c4d.BaseTag(c4d.Tcompositing)   
+    tag_comp[c4d.COMPOSITINGTAG_BACKGROUND] = True
+    sol.InsertTag(tag_comp)
+    #tag materiau
+    mat_tag = c4d.TextureTag()
+    mat_tag.SetMaterial(mat_back)
+    mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+    sol.InsertTag(mat_tag)
     sol.InsertUnder(environnement)
+    
+    #ARRIERE-PLAN
+    bg = c4d.BaseObject(c4d.Obackground)
+    mat_tag = c4d.TextureTag()
+    mat_tag.SetMaterial(mat_back)
+    mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+    bg.InsertTag(mat_tag)
+    bg.InsertUnder(environnement)
 
 
     doc.InsertObject(environnement)
@@ -696,6 +778,10 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     #GI et Ciel Physique
     activeGI(doc)
     sky = physical_sky_from_origin(doc)
+    #compositing tag pour qu'il ne soit pas visible
+    tag_comp = c4d.BaseTag(c4d.Tcompositing)    
+    tag_comp[c4d.COMPOSITINGTAG_SEENBYCAMERA] = False
+    sky.InsertTag(tag_comp)
     sky.InsertUnder(environnement)
 
     doc.EndUndo()

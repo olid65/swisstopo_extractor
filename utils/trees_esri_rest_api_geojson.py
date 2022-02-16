@@ -127,6 +127,7 @@ def url_geojson_trees(bbox_or_spline,origine):
     params = {
                 "geometry" : f"{xmin},{ymin},{xmax},{ymax}",
                 "geometryType": "esriGeometryEnvelope",
+                "outSR":'2056',
                 "returnGeometry":"true",
                 "returnZ": "true",
                 "spatialRel":"esriSpatialRelIntersects",
@@ -197,6 +198,7 @@ def url_geojson_forest(bbox_or_spline,origine):
                 "orderByFields" : "OBJEKTART",
                 "where" : f"{sql}",
                 "returnZ": "true",
+                "outSR":'2056',
                 "spatialRel":"esriSpatialRelIntersects",
                 "f":"geojson"
               }

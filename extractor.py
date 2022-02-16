@@ -388,6 +388,9 @@ class DlgBbox(c4d.gui.GeDialog):
     bati3D = False
     ortho2m = False
     ortho10cm = False
+
+    fn_trees = None
+    fn_forest = None
     
     def CreateLayout(self):
         #lecture du fichier des lieux
@@ -596,25 +599,26 @@ class DlgBbox(c4d.gui.GeDialog):
         self.majNombresPolys()
     
     def majNombresPolys(self):
-        larg = self.maxi.x - self.mini.x
-        haut = self.maxi.z - self.mini.z
+        if self.maxi and self.mini:
+            larg = self.maxi.x - self.mini.x
+            haut = self.maxi.z - self.mini.z
 
-        val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+            val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
 
-        if not larg or not haut or not val_px:
-            self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
-        else:
-            nb_px_larg = round(round(larg /val_px,0))
-            nb_px_haut = round(haut/val_px,0)
-            self.total_polys = round(nb_px_larg * nb_px_haut)
-            total_txt = f'{self.total_polys:,}'.replace(",","'")
-            txt = f'{total_txt} polygones (boîte englobante)'
-            self.SetString(self.ID_TXT_NBRE_POLYS_MNT,txt)
-        
-        if self.total_polys > NB_POLYGONES_MAX:
-            self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
-        else:
-            self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
+            if not larg or not haut or not val_px:
+                self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+            else:
+                nb_px_larg = round(round(larg /val_px,0))
+                nb_px_haut = round(haut/val_px,0)
+                self.total_polys = round(nb_px_larg * nb_px_haut)
+                total_txt = f'{self.total_polys:,}'.replace(",","'")
+                txt = f'{total_txt} polygones (boîte englobante)'
+                self.SetString(self.ID_TXT_NBRE_POLYS_MNT,txt)
+            
+            if self.total_polys > NB_POLYGONES_MAX:
+                self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
+            else:
+                self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
 
 
     def Command(self, id, msg):
@@ -956,6 +960,9 @@ class DlgBbox(c4d.gui.GeDialog):
                 doc = c4d.documents.GetActiveDocument()
                 origine = doc[CONTAINER_ORIGIN]
 
+                self.fn_trees = None
+                self.fn_forest = None
+
                 #ARBRES ISOLES
                 if self.GetBool(self.CHECKBOX_TREES):
                     name_file = 'trees.geojson'
@@ -967,6 +974,7 @@ class DlgBbox(c4d.gui.GeDialog):
                         url = trees.url_geojson_trees((self.mini.x,self.mini.z,self.maxi.x,self.maxi.z),origine)
                     
                     self.dwload_lst.append((url,fn))
+                    self.fn_trees = fn
 
                 #FORETS
                 if self.GetBool(self.CHECKBOX_FOREST):
@@ -979,6 +987,7 @@ class DlgBbox(c4d.gui.GeDialog):
                         url = trees.url_geojson_forest((self.mini.x,self.mini.z,self.maxi.x,self.maxi.z),origine)
                     
                     self.dwload_lst.append((url,fn))
+                    self.fn_forest = fn
 
 
                 #si la liste est vide on quitte et on avertit
@@ -1031,7 +1040,19 @@ class DlgBbox(c4d.gui.GeDialog):
                 bati3D = self.GetBool(self.CHECKBOX_BATI3D)
                 ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
                 ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
-                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = self.spline_cut)
+                #trees = self.GetBool(self.CHECKBOX_TREES)
+                #forest = self.GetBool(self.CHECKBOX_FOREST)
+
+                fn_doc_arbres_sources =  os.path.join(os.path.dirname(__file__),'data','__arbres_sources__.c4d')
+                arbres_sources = None
+                if os.path.isfile(fn_doc_arbres_sources):
+                    
+                    doc_arbres_sources = c4d.documents.LoadDocument(fn_doc_arbres_sources, c4d.SCENEFILTER_OBJECTS)
+                    if doc_arbres_sources:
+                        arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
+
+
+                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
 
                 #ARBRES
                 splines_foret = None

@@ -21,9 +21,6 @@ class ThreadDownload(c4d.threading.C4DThread):
 
             try:
                 x = urllib.request.urlopen(url)
-
-                #print(x.read())
-
                 with open(fn_dst,'wb') as saveFile:
                     saveFile.write(x.read())
 

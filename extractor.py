@@ -1040,8 +1040,6 @@ class DlgBbox(c4d.gui.GeDialog):
                 bati3D = self.GetBool(self.CHECKBOX_BATI3D)
                 ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
                 ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
-                #trees = self.GetBool(self.CHECKBOX_TREES)
-                #forest = self.GetBool(self.CHECKBOX_FOREST)
 
                 fn_doc_arbres_sources =  os.path.join(os.path.dirname(__file__),'data','__arbres_sources__.c4d')
                 arbres_sources = None
@@ -1053,31 +1051,6 @@ class DlgBbox(c4d.gui.GeDialog):
 
 
                 import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
-
-                #ARBRES
-                splines_foret = None
-                pts_trees_sommets = None
-
-                #url_base_isoles = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/0'
-                #url_base_forest = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
-                #si on a une spline on coupe selon la spline
-                #if self.spline_cut:
-                    #FORETS
-                    #splines_foret = trees.polygons_from_spline(self.spline_cut,url_base_forest,origine)
-                    #ARBRES ISOLES
-                    #pts_trees_sommets = trees.pts_from_spline(self.spline_cut,url_base_isoles,origine)
-                    
-                #sinon on prend la bbox
-                #else:
-                    #FORETS
-                    #splines_foret = trees.polygons_from_bbox(xmin,ymin,xmax,ymax,url_base_forest,origine)
-                    #ARBRES ISOLES
-                    #pts_trees_sommets = trees.pts_from_bbox(xmin,ymin,xmax,ymax,url_base_isoles,origine)
-
-                if splines_foret:
-                    self.doc.InsertObject(splines_foret)
-                if pts_trees_sommets:
-                    self.doc.InsertObject(pts_trees_sommets)
                 c4d.EventAdd()
 
 

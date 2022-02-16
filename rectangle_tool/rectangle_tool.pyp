@@ -2,7 +2,6 @@
 
 import c4d,os
 import time
-import numpy as nmpy
 import math
 #be sure to use a unique ID obtained from www.plugincafe.com
 PLUGIN_ID = 1058813      

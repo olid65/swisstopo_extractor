@@ -251,6 +251,23 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax):
                 res.append(dic['href'])
     return res
 
+def suppr_doublons_list_ortho(lst):
+    """supprime les doublons de no de feuilles et garde uniquement la plus récente"""
+    dic = {}
+    for url in lst:
+        #exemple url
+        #https://data.geo.admin.ch/ch.swisstopo.swissimage-dop10/swissimage-dop10_2020_2567-1107/swissimage-dop10_2020_2567-1107_2_2056.tif
+        #on extrait le dernier élément en splitant par /
+        #on ne grade pas l'extension [:-4]
+        # et on split par _ pour récupérer nom,an,noflle,taille_px,epsg
+        nom,an,noflle,taille_px,epsg = url.split('/')[-1][:-4].split('_')
+        dic.setdefault((noflle,float(taille_px)),[]).append((an,url))
+    res = []
+    for noflle,lst in dic.items():
+        an, url = sorted(lst,reverse = True)[0]
+        res.append(url)
+    return res
+
 def suppr_doublons_bati3D(lst_url):    
     dico = {}
     dxf_files = [url for url in lst_url if url[-8:]=='.dxf.zip']
@@ -503,8 +520,6 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
 
-        
-
         self.GroupEnd()
 
         # LISTE DES TELECHARGEMNT
@@ -519,12 +534,12 @@ class DlgBbox(c4d.gui.GeDialog):
         #BOUTON pour l'import de la maquette
         #pour qu'il s'active il faut que les fichiers soient téléchargés
         #attention pour que masquer le bouton il faut le metrre dans un groupe qui doit aussi être dans un groupe !  
-        if self.GroupBegin(self.ID_MAIN_GROUP, flags=c4d.BFH_CENTER):
-            if self.GroupBegin(self.ID_GROUP_IMPORT_MODEL, flags=c4d.BFH_CENTER, cols=1, rows=1):
-                self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-                self.AddButton(self.BTON_IMPORT_MODEL, flags=c4d.BFH_MASK, initw=250, inith=20, name="Importer la maquette")
-                self.GroupEnd()
-            self.GroupEnd()
+        # if self.GroupBegin(self.ID_MAIN_GROUP, flags=c4d.BFH_CENTER):
+        #     if self.GroupBegin(self.ID_GROUP_IMPORT_MODEL, flags=c4d.BFH_CENTER, cols=1, rows=1):
+        #         self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
+        #         self.AddButton(self.BTON_IMPORT_MODEL, flags=c4d.BFH_MASK, initw=250, inith=20, name="Importer la maquette")
+        #         self.GroupEnd()
+        #     self.GroupEnd()
 
         #ETAT DU TELECHARGEMENT
         #self.GroupBegin(700, flags=c4d.BFH_SCALEFIT, cols=1, rows=1)
@@ -845,6 +860,13 @@ class DlgBbox(c4d.gui.GeDialog):
 
             self.majNombresPolys()
 
+        if id == self.ID_CHECKBOX_CUT_WITH_SPLINE:
+            
+            if not self.GetBool(self.ID_CHECKBOX_CUT_WITH_SPLINE):
+                self.spline_cut = None
+            
+
+
 
         #############################################################
         # 4 LISTE DES TELECHARGEMENTs
@@ -900,7 +922,8 @@ class DlgBbox(c4d.gui.GeDialog):
 
                     url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['ortho']
                     lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax) if tri in v]
-
+                    #suppression des doublons de feuille, on garde que la feuille la plus récente
+                    lst = suppr_doublons_list_ortho(lst)
                     urls+= lst
                     #for v in lst : print(v)
                     #print('---------')
@@ -953,6 +976,13 @@ class DlgBbox(c4d.gui.GeDialog):
                     fn_temp = fn.replace('.zip','')
                     if not os.path.isfile(fn_temp):                            
                         self.dwload_lst.append((url,fn))
+                        
+                    #pour les orthos c'est un peu bizarre
+                    #suivant la requâte il prend des fois 2017 des fois 2020
+                    # et il y a même des doublons (même tuile sur 2 années différentes)
+                    #TODO si doublon de tuile garder la plus récente
+                    #-> supprimer la plus ancienne si déjà téléchargée
+                    #-> enlever de la liste de téléchargement si une plus récente est téléchargée
                 
                 #VEGETATION
                 #TODO : gérer l'origine de manière globale
@@ -1056,8 +1086,8 @@ class DlgBbox(c4d.gui.GeDialog):
 
 
                 #doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None
-            self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
-            self.LayoutChanged(self.ID_MAIN_GROUP)
+            #self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
+            #self.LayoutChanged(self.ID_MAIN_GROUP)
             
             
 

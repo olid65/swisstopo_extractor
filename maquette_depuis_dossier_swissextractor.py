@@ -641,6 +641,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
 
     #IMAGES
     #si on a un mnt on le sélectionne pour que l'image se plaque dessus'
+    # TODO si on n'a pas de MNT -> créer un plan à la taille de l'image ?
     if mnt:
         doc.SetActiveObject(mnt)
     #sinon on déselectionne tout

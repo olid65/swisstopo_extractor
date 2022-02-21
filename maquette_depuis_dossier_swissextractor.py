@@ -354,7 +354,7 @@ def extractFromSpline(fn_shp,raster_srce, raster_dst,cellsize, form = 'AAIGrid',
         return False
     
     layer_name = os.path.basename(fn_shp)[:-4]
-    req = f"{path_to_gdalwarp} -overwrite -of {form} -cutline {fn_shp} -tr {cellsize} {cellsize} -cl {layer_name} -crop_to_cutline {raster_srce} {raster_dst}"
+    req = f'"{path_to_gdalwarp}" -overwrite -of {form} -cutline "{fn_shp}" -tr {cellsize} {cellsize} -cl "{layer_name}" -crop_to_cutline "{raster_srce}" "{raster_dst}"'
     output = subprocess.check_output(req,shell=True)
     
     if os.path.isfile(raster_dst):

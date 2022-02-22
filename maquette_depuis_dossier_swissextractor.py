@@ -639,6 +639,31 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
         if buildings :
             doc.InsertObject(buildings)
 
+    ###################################
+    # ARBRES
+    ###################################
+
+    # il faut un mnt (TODO générer les arbres au sol si on n'a pas de MNT ???)
+    trees = None
+    forest = None
+    if mnt:
+        if fn_trees:
+            point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
+            if point_object_trees_sommets:
+                trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
+                
+                doc.InsertObject(trees)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,trees)
+
+
+        if fn_forest:
+            splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
+            if splines_forest :
+                forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
+
+                doc.InsertObject(forest)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,forest)
+
     #IMAGES
     #si on a un mnt on le sélectionne pour que l'image se plaque dessus'
     # TODO si on n'a pas de MNT -> créer un plan à la taille de l'image ?
@@ -674,44 +699,17 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
                 tg = gp.creerGeoTag(buildings)
             tag = gp.creerTagTex(buildings, displayTag = False)
             tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
-
-    ###################################
-    # ARBRES
-    ###################################
-
-    # il faut un mnt (TODO générer les arbres au sol si on n'a pas de MNT ???)
-    if mnt:
-        if fn_trees:
-            point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
-            trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
-
-            #copie du tag orthophoto
-            tag_ortho = mnt.GetTag(c4d.Ttexture)
-            if tag_ortho:
-                tag_clone = tag_ortho.GetClone()
-                tag_clone[c4d.TEXTURETAG_RESTRICTION]= ''
-                tag_clone[c4d.TEXTURETAG_TILE] = True
-                trees.InsertTag(tag_clone)
-            
-            doc.InsertObject(trees)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,trees)
-
-
-        if fn_forest:
-            splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
-            forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
-
-            #copie du tag orthophoto
-            tag_ortho = mnt.GetTag(c4d.Ttexture)
-            if tag_ortho:
-                tag_clone = tag_ortho.GetClone()
-                tag_clone[c4d.TEXTURETAG_RESTRICTION]= ''
-                tag_clone[c4d.TEXTURETAG_TILE] = True
-                forest.InsertTag(tag_clone)
-
-            doc.InsertObject(forest)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,forest)
-
+        
+        if trees:
+            #on regarde si il a un geotag
+            if not trees.GetTag(1026472,0):
+                tg = gp.creerGeoTag(trees)
+            tag = gp.creerTagTex(trees, displayTag = False)
+        if forest :
+            #on regarde si il a un geotag
+            if not forest.GetTag(1026472,0):
+                tg = gp.creerGeoTag(forest)
+            tag = gp.creerTagTex(forest, displayTag = False)
 
 
     ##################################

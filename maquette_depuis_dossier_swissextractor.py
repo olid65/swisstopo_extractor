@@ -629,6 +629,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
 
 
     #Swissbuidings3D
+    buildings = None
     if bati3D:
         if spline_decoupe:
             volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)

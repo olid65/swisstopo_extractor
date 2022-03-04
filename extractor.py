@@ -364,10 +364,15 @@ class DlgBbox(c4d.gui.GeDialog):
     TXT_SURFACE_NOMBRE_POLYS_MNT = "Nombre de polygones pour le MNT : "
     TXT_CUT_WITH_SPLINE = "Découpage selon la spline sélectionnée"
 
+    TXT_NOT_SAVED = "Le document doit être enregistré pour pouvoir copier les textures dans le dossier tex, vous pourrez le faire à la prochaine étape\nVoulez-vous continuer ?"
+    TXT_DOC_NOT_IN_METERS = "Les unités du document ne sont pas en mètres, si vous continuez les unités seront modifiées.\nVoulez-vous continuer ?"
+    TXT_NAS_HEPIA = "Votre document est enregistré sur le NAS (hes-nas-prairie.hes.adhes.hesge.ch).\nEnregistrez le projet et les ressources utilisées sur un autre disque (disque dur externe, Partage, ou dossier à votre nom à la racine de C:)"
+    TXT_PATH_CAR_SPECIAL = "Le chemin de fichier continet un ou plusieurs caractères spéciaux (accents,cédille,...) \nImport impossible !"
+
 
     TXT_NO_PATH_TO_QGIS = "QGis ne semble pas installé sur cette machine, vous pourrez importer les différents fichiers sur votre ordinateur, mais pas importer la maquette dans Cinema4D."
     TXT_NO_PATH_TO_QGIS_QUESTION = TXT_NO_PATH_TO_QGIS +" Voulez-vous continuer ?"
-    TXT_NO_PATH_TO_QGIS_FINAL = "Sans Qgis l'import de la maquette est imèpossible !"
+    TXT_NO_PATH_TO_QGIS_FINAL = "Sans Qgis l'import de la maquette est impossible !"
 
     TXT_NO_ORIGIN = "Le document n'est pas géoréférencé !"
     TXT_NOT_VIEW_TOP = "Vous devez activer une vue de haut !"
@@ -874,6 +879,34 @@ class DlgBbox(c4d.gui.GeDialog):
         #TODO : désactiver le bouton si les coordonnées ne sont pas bonnes !
 
         if id == self.BTON_GET_URLS_DOWNLOAD:
+            #Vérification que le fichier est enregistré
+            doc = c4d.documents.GetActiveDocument()
+
+            path_doc = doc.GetDocumentPath()
+
+            while not path_doc:
+                rep = c4d.gui.QuestionDialog(self.TXT_NOT_SAVED)
+                if not rep : return True
+                c4d.documents.SaveDocument(doc, "", c4d.SAVEDOCUMENTFLAGS_DIALOGSALLOWED, c4d.FORMAT_C4DEXPORT)
+                c4d.CallCommand(12098) # Enregistrer le projet
+                path_doc = doc.GetDocumentPath()
+
+            #Vérification qu'on n'est pas sur le NAS de l'école
+            if 'hes-nas-prairie.hes.adhes.hesge.ch' in path_doc:
+                c4d.gui.MessageDialog(self.TXT_NAS_HEPIA)
+                return True
+
+            #Vérification qu'il n'y ait pas de caractères spéciaux dans le chemin !
+            #GDAL ne supporte pas
+            try : 
+                path_doc.encode(encoding='ASCII')
+            except:
+                c4d.gui.MessageDialog(self.TXT_PATH_CAR_SPECIAL)
+                return True
+
+
+
+
             self.qgispath = getPathToQGISbin()
             if not self.qgispath:
                 rep = c4d.gui.QuestionDialog(self.TXT_NO_PATH_TO_QGIS_QUESTION)
@@ -930,9 +963,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
 
                 #TELECHARGEMENT
-                doc = c4d.documents.GetActiveDocument()
-
-                path_doc = doc.GetDocumentPath()
+                
                 pth = None
                 #si le fichier est enregistré et que
                 #la case "dossier swistopo" est cochée on crée automatiquement le dossier

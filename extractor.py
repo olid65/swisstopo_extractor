@@ -171,24 +171,26 @@ def empriseVueHaut(bd, origine):
 
 
 def empriseObject(obj, origine):
+    geom = obj
+    if not geom.CheckType(c4d.Opoint):
+        geom = geom.GetCache()
+        if not geom.CheckType(c4d.Opoint) : return None
     mg = obj.GetMg()
-
-    rad = obj.GetRad()
-    centre = obj.GetMp()
-
-    # 4 points de la bbox selon orientation de l'objet
-    pts = [c4d.Vector(centre.x + rad.x, centre.y + rad.y, centre.z + rad.z) * mg,
-           c4d.Vector(centre.x - rad.x, centre.y + rad.y, centre.z + rad.z) * mg,
-           c4d.Vector(centre.x - rad.x, centre.y - rad.y, centre.z + rad.z) * mg,
-           c4d.Vector(centre.x - rad.x, centre.y - rad.y, centre.z - rad.z) * mg,
-           c4d.Vector(centre.x + rad.x, centre.y - rad.y, centre.z - rad.z) * mg,
-           c4d.Vector(centre.x + rad.x, centre.y + rad.y, centre.z - rad.z) * mg,
-           c4d.Vector(centre.x - rad.x, centre.y + rad.y, centre.z - rad.z) * mg,
-           c4d.Vector(centre.x + rad.x, centre.y - rad.y, centre.z + rad.z) * mg]
-
-    mini = c4d.Vector(min([p.x for p in pts]), min([p.y for p in pts]), min([p.z for p in pts])) + origine
-    maxi = c4d.Vector(max([p.x for p in pts]), max([p.y for p in pts]), max([p.z for p in pts])) + origine
-
+    pts = [p*mg+origine for p in geom.GetAllPoints()]
+    lst_x = [p.x for p in pts]
+    lst_y = [p.y for p in pts]
+    lst_z = [p.z for p in pts]
+    
+    xmin = min(lst_x)
+    xmax = max(lst_x)
+    ymin = min(lst_y)
+    ymax = max(lst_y)
+    zmin = min(lst_z)
+    zmax = max(lst_z)
+    
+    mini = c4d.Vector(xmin,ymin,zmin)
+    maxi = c4d.Vector(xmax,ymax,zmax)
+    
     return mini, maxi
 
 

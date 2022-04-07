@@ -49,8 +49,8 @@ EPAISSEUR = 10 #épaisseur du socle depuis le points minimum
 
 NAME_SELECTION_MNT = 'mnt'
 
-FORMAT_IMAGES = '.jpg'
-FORMAT_IMAGES_GDAL = 'JPEG'
+FORMAT_IMAGES = '.png'
+FORMAT_IMAGES_GDAL = 'PNG'
 
 
 def empriseVueHaut(bd, origine):
@@ -737,52 +737,54 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     ##############################################
     #ENVIRONNEMENT
     ##############################################
-    environnement = c4d.BaseObject(c4d.Onull)
-    environnement.SetName('environnement')
+    #on crée seulement si on n'en trouve pas déjà un 
+    if not doc.SearchObject('environnement'):
+        environnement = c4d.BaseObject(c4d.Onull)
+        environnement.SetName('environnement')
 
-    #MATERIAU ARRIERE-PLAN
-    mat_back = c4d.BaseMaterial(c4d.Mmaterial)
-    mat_back.SetName('Fond')
-    mat_back[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
-    
-    doc.InsertMaterial(mat_back)
-    doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat_back)
+        #MATERIAU ARRIERE-PLAN
+        mat_back = c4d.BaseMaterial(c4d.Mmaterial)
+        mat_back.SetName('Fond')
+        mat_back[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
+        
+        doc.InsertMaterial(mat_back)
+        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat_back)
 
-    #SOL
-    sol = c4d.BaseObject(c4d.Ofloor)
-    if mnt and alt_min:
-        sol.SetAbsPos(c4d.Vector(0,alt_min,0))
-    #compositing tag pour compositing background
-    tag_comp = c4d.BaseTag(c4d.Tcompositing)   
-    tag_comp[c4d.COMPOSITINGTAG_BACKGROUND] = True
-    sol.InsertTag(tag_comp)
-    #tag materiau
-    mat_tag = c4d.TextureTag()
-    mat_tag.SetMaterial(mat_back)
-    mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
-    sol.InsertTag(mat_tag)
-    sol.InsertUnder(environnement)
-    
-    #ARRIERE-PLAN
-    bg = c4d.BaseObject(c4d.Obackground)
-    mat_tag = c4d.TextureTag()
-    mat_tag.SetMaterial(mat_back)
-    mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
-    bg.InsertTag(mat_tag)
-    bg.InsertUnder(environnement)
+        #SOL
+        sol = c4d.BaseObject(c4d.Ofloor)
+        if mnt and alt_min:
+            sol.SetAbsPos(c4d.Vector(0,alt_min,0))
+        #compositing tag pour compositing background
+        tag_comp = c4d.BaseTag(c4d.Tcompositing)   
+        tag_comp[c4d.COMPOSITINGTAG_BACKGROUND] = True
+        sol.InsertTag(tag_comp)
+        #tag materiau
+        mat_tag = c4d.TextureTag()
+        mat_tag.SetMaterial(mat_back)
+        mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+        sol.InsertTag(mat_tag)
+        sol.InsertUnder(environnement)
+        
+        #ARRIERE-PLAN
+        bg = c4d.BaseObject(c4d.Obackground)
+        mat_tag = c4d.TextureTag()
+        mat_tag.SetMaterial(mat_back)
+        mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+        bg.InsertTag(mat_tag)
+        bg.InsertUnder(environnement)
 
 
-    doc.InsertObject(environnement)
-    doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,environnement)
+        doc.InsertObject(environnement)
+        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,environnement)
 
-    #GI et Ciel Physique
-    activeGI(doc)
-    sky = physical_sky_from_origin(doc)
-    #compositing tag pour qu'il ne soit pas visible
-    tag_comp = c4d.BaseTag(c4d.Tcompositing)    
-    tag_comp[c4d.COMPOSITINGTAG_SEENBYCAMERA] = False
-    sky.InsertTag(tag_comp)
-    sky.InsertUnder(environnement)
+        #GI et Ciel Physique
+        activeGI(doc)
+        sky = physical_sky_from_origin(doc)
+        #compositing tag pour qu'il ne soit pas visible
+        tag_comp = c4d.BaseTag(c4d.Tcompositing)    
+        tag_comp[c4d.COMPOSITINGTAG_SEENBYCAMERA] = False
+        sky.InsertTag(tag_comp)
+        sky.InsertUnder(environnement)
 
     doc.EndUndo()
     c4d.EventAdd()

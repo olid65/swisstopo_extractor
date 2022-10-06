@@ -272,7 +272,10 @@ def getPathToQGISbin(path_to_QGIS = None):
                 path = os.path.join(path_to_QGIS,folder_name,'Contents/MacOS/bin')
 
             if os.path.isdir(path):
-                return path
+                # on vérifie qu'il y ait bien gdal_translate
+                #TODO vérifier les autres 
+                if os.path.isfile(os.path.join(path,'gdal_translate.exe')):
+                    return path
     return None
 
 def gdalBIN_OK(path_to_QGIS_bin, exe = 'gdal_translate'):

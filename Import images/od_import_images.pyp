@@ -109,12 +109,19 @@ def get_info_from_fn(fn):
 
     return projection,scale,resolution
 
+def is_file_in_path(basename,path): 
+    for root, dirs, files in os.walk(path): 
+        for f_name in files: 
+            if f_name == basename:
+                return True
+    return False
+
 def creer_mat(fn, doc, alpha = False):
     nom = basename(fn)
     relatif = False
     docpath = doc.GetDocumentPath()
     if docpath:
-        relatif = c4d.IsInSearchPath(nom, docpath)
+        relatif = is_file_in_path(nom, os.path.join(docpath,'tex'))
         #print(nom,relatif)
     mat = c4d.BaseMaterial(c4d.Mmaterial)
     mat.SetName(nom)
@@ -378,8 +385,6 @@ def importImages(file = False):
 
     doc.EndUndo()
     c4d.EventAdd()
-
-
 
 class ImportImagesFile(c4d.plugins.CommandData):
     def Execute(self, doc):

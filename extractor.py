@@ -1063,6 +1063,8 @@ class DlgBbox(c4d.gui.GeDialog):
                 self.doc = doc
                 self.pth_swisstopo_data = pth
                 self.bbox = bbox
+                #variable pour eviter de lancer la génération de la maquette plusieurs fois
+                self.gen = True
 
                 #LANCEMENT DU THREAD
                 self.thread = ThreadDownload(self.dwload_lst)
@@ -1091,36 +1093,42 @@ class DlgBbox(c4d.gui.GeDialog):
             if not self.qgispath:
                 c4d.gui.MessageDialog(self.TXT_NO_PATH_TO_QGIS_FINAL)
                 return 
+            
+            if self.gen:
+                if c4d.gui.QuestionDialog(self.TXT_IMPORT_MODEL):
+                    #pour éviter de lancer plusieurs fois la génération de la maquette
+                    self.gen = False
+                    ###################################################################
+                    #IMPORTATION DE LA MAQUETTE
+                    ###################################################################
+                    origine = self.doc[CONTAINER_ORIGIN]
+                    xmin,ymin,xmax,ymax = self.bbox
 
-            if c4d.gui.QuestionDialog(self.TXT_IMPORT_MODEL):
-                ###################################################################
-                #IMPORTATION DE LA MAQUETTE
-                ###################################################################
-                origine = self.doc[CONTAINER_ORIGIN]
-                xmin,ymin,xmax,ymax = self.bbox
-                mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
-                mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
-                bati3D = self.GetBool(self.CHECKBOX_BATI3D)
-                ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
-                ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
+                    #Test pour ajouter une valeur de maille autour de la bbox
+                    #pour obtenir au final exactement l'emprise (pas concluant)
+                    #xmin -= self.taille_maille
+                    xmax += self.taille_maille
+                    ymin -= self.taille_maille
+                    #ymax += self.taille_maille
 
-                fn_doc_arbres_sources =  os.path.join(os.path.dirname(__file__),'data','__arbres_sources__.c4d')
-                arbres_sources = None
-                if os.path.isfile(fn_doc_arbres_sources):
-                    
-                    doc_arbres_sources = c4d.documents.LoadDocument(fn_doc_arbres_sources, c4d.SCENEFILTER_OBJECTS)
-                    if doc_arbres_sources:
-                        arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
+                    mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
+                    mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
+                    bati3D = self.GetBool(self.CHECKBOX_BATI3D)
+                    ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
+                    ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
 
-
-                import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
-                c4d.EventAdd()
+                    fn_doc_arbres_sources =  os.path.join(os.path.dirname(__file__),'data','__arbres_sources__.c4d')
+                    arbres_sources = None
+                    if os.path.isfile(fn_doc_arbres_sources):
+                        
+                        doc_arbres_sources = c4d.documents.LoadDocument(fn_doc_arbres_sources, c4d.SCENEFILTER_OBJECTS)
+                        if doc_arbres_sources:
+                            arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
 
 
+                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
+                    c4d.EventAdd()
 
-                #doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,spline_decoupe = None
-            #self.HideElement(self.ID_GROUP_IMPORT_MODEL, hide = False)
-            #self.LayoutChanged(self.ID_MAIN_GROUP)
             
             
 

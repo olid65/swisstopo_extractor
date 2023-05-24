@@ -75,13 +75,13 @@ def pointObjectFromGeojson(fn,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
         res.SetAllPoints(pts)
         res.SetName(basename)
 
-        vertex_color_tag = c4d.VertexColorTag(nb_pts)
-        vertex_color_tag[c4d.ID_VERTEXCOLOR_DRAWPOINTS] = True
+        #vertex_color_tag = c4d.VertexColorTag(nb_pts)
+        #vertex_color_tag[c4d.ID_VERTEXCOLOR_DRAWPOINTS] = True
 
-        data = vertex_color_tag.GetDataAddressW()
-        for idx in range(nb_pts):
-            c4d.VertexColorTag.SetPoint(data, None, None, idx, color)
-        res.InsertTag(vertex_color_tag)
+        #data = vertex_color_tag.GetDataAddressW()
+        #for idx in range(nb_pts):
+            #c4d.VertexColorTag.SetPoint(data, None, None, idx, color)
+        #res.InsertTag(vertex_color_tag)
 
         res.SetAbsPos(pos)
 

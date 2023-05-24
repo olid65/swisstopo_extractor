@@ -224,7 +224,7 @@ def get_imgs_georef(path, ext = FORMAT_IMAGES):
 
 
 def get_cube_from_obj(obj, haut_sup = 100):
-    """Lae paramètre haut_sup sert à avoirun peu de marge en haut et en bas lorsque l'on découpe les bâtiment"""
+    """Le paramètre haut_sup sert à avoir un peu de marge en haut et en bas lorsque l'on découpe les bâtiments"""
     mg = obj.GetMg()
     rad = obj.GetRad()
     centre = obj.GetMp()
@@ -247,6 +247,22 @@ def get_cube_from_obj(obj, haut_sup = 100):
 
     cube.SetAbsPos(centre)
     cube[c4d.PRIM_CUBE_LEN] = maxi-mini + c4d.Vector(0,haut_sup,0)
+
+    return cube
+
+def get_cube_from_bbox(xmin,ymin,xmax,ymax, origin):
+    alt_base = 0
+    alt_haut = 6000
+    haut = alt_haut-alt_base
+    
+    size = c4d.Vector(xmax-xmin,haut,ymax-ymin)
+    pos = c4d.Vector((xmin+xmax)/2-origin.x,haut/2,(ymin+ymax)/2-origin.z)
+
+    
+    cube = c4d.BaseObject(c4d.Ocube)
+    cube.SetAbsPos(pos)
+    
+    cube[c4d.PRIM_CUBE_LEN] = size
 
     return cube
 
@@ -584,9 +600,9 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     #lst_dxf = get_swissbuildings3D_dxfs(pth)
     #lst_imgs = get_imgs_georef(pth)
 
-    if not lst_asc and not lst_dxf and not lst_imgs:
-        c4d.gui.MessageDialog("""Il n'y a ni terrain ni swissbuidings3D ni images géoréférée dans le dossier, import impossible""")
-        return
+    #if not lst_asc and not lst_dxf and not lst_imgs:
+        #c4d.gui.MessageDialog("""Il n'y a ni terrain ni swissbuidings3D ni images géoréférée dans le dossier, import impossible""")
+        #return
 
     #document en mètre
     doc = c4d.documents.GetActiveDocument()
@@ -605,7 +621,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     alt_min = 0
     #Modèle(s) de terrain
     mnt = None
-    cube_mnt = None
+    cube_mnt = get_cube_from_bbox(xmin,ymin,xmax,ymax, origine)
     for fn_asc in lst_asc:
         mnt = importMNT.terrainFromASC(fn_asc,doc)
         if spline_decoupe:
@@ -630,7 +646,6 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             #que j'ai trouvé pour que le cube soit au bon endroit'
             geotag = mnt.GetTag(GEOTAG_ID)
             if geotag:
-                cube_mnt
                 pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
                 cube_mnt.SetRelPos(pos)
 

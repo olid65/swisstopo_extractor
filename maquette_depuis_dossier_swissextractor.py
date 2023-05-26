@@ -618,6 +618,10 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
 
     doc.StartUndo()
 
+    null_maquette = c4d.BaseObject(c4d.Onull)
+    null_maquette.SetName('Maquette swisstopo')
+    
+
     alt_min = 0
     #Modèle(s) de terrain
     mnt = None
@@ -634,8 +638,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
 
         if mnt:
             #alt_min = socle(mnt,doc)
-            doc.InsertObject(mnt)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mnt)
+            mnt.InsertUnderLast(null_maquette)
 
 
             #CUBE pour la découpe des batiments
@@ -660,7 +663,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             buildings = swissbuildings3D.importSwissBuidings(pth, doc, cube_mnt)
         
         if buildings :
-            doc.InsertObject(buildings)
+            buildings.InsertUnderLast(null_maquette)
 
     ###################################
     # ARBRES
@@ -675,8 +678,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             if point_object_trees_sommets:
                 trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
                 
-                doc.InsertObject(trees)
-                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,trees)
+                trees.InsertUnderLast(null_maquette)
 
 
         if fn_forest:
@@ -684,8 +686,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             if splines_forest :
                 forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
 
-                doc.InsertObject(forest)
-                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,forest)
+                forest.InsertUnderLast(null_maquette)
 
     #IMAGES
     #si on a un mnt on le sélectionne pour que l'image se plaque dessus'
@@ -755,6 +756,9 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             cube_mnt
             pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
             cube_mnt.SetRelPos(pos)
+    
+    doc.InsertObject(null_maquette)
+    doc.AddUndo(c4d.UNDOTYPE_NEW,null_maquette)
 
     ##############################################
     #ENVIRONNEMENT

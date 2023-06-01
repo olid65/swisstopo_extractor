@@ -129,7 +129,7 @@ def get_swissbuildings3D_dxfs(path):
 
     for root, dirs, files in os.walk(path, topdown=False):
         for name in dirs:
-            if name == 'swissbuildings3d' :
+            if 'swissbuildings3d' in name:
                 lst_dxf = [fn_dxf for fn_dxf in glob(os.path.join(root, name,'*.dxf'))]
     return lst_dxf
 

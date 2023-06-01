@@ -28,10 +28,17 @@ class ThreadDownload(c4d.threading.C4DThread):
                 if fn_dst[-4:] =='.zip':
                     pth = os.path.dirname(fn_dst)
                     with ZipFile(fn_dst) as file:
-                        for filename in file.namelist():
-                            temp_fn = file.extract(filename,pth)
-                            #on renomme le fichier comme le fichier zip
-                            os.rename(temp_fn, fn_dst[:-4])
+                        #Pour les fichier gdb de swissbuildings v3 c'est un dossier donc il faut faire extractall
+                        if fn_dst[-8:] =='.gdb.zip':
+                            #DEZIPPAGE
+                            with ZipFile(fn_dst, 'r') as zipObj:
+                                # Extract all the contents of zip file in current directory
+                                zipObj.extractall(pth)
+                        else :
+                            for filename in file.namelist():
+                                temp_fn = file.extract(filename,pth)
+                                #on renomme le fichier comme le fichier zip
+                                os.rename(temp_fn, fn_dst[:-4])
 
                     os.remove(fn_dst)
 

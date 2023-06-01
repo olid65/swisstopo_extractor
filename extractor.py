@@ -226,11 +226,14 @@ def lv95towgs84(x,y):
     return float(json_res['easting']),float(json_res['northing'])
 
 
-def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax):
+def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax, gdb = False):
     #pour les bati3D il y a chaque fois toute la Suisse dans 2 gdb
     #pour les mnt on aussi du xyz
     # attention bien prendre les 8 derniers caractères
-    lst_indesirables = ['.xyz.zip','.gdb.zip']
+    if gdb :
+        lst_indesirables = []
+    else:
+        lst_indesirables = ['.xyz.zip','.gdb.zip']
     #conversion coordonnées
     est,sud = lv95towgs84(xmin,ymin)
     ouest, nord = lv95towgs84(xmax,ymax)
@@ -248,9 +251,18 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax):
     for item in json_res['features']:
         for k,dic in item['assets'].items():
             href = dic['href']
-
-            if href[-8:] not in lst_indesirables:
-                res.append(dic['href'])
+            if gdb:
+                #on garde que les gdb
+                if href[-8:] == '.gdb.zip':
+                    #dans la version 3 on a soit un url qui se termine par swissbuildings3d_3_0_2021_2056_5728.gdb.zip
+                    #qui contient la moitié de la suisse
+                    #ou swissbuildings3d_3_0_2020_1301-31_2056_5728.gdb.zip sous forme de tuile
+                    #-> donc on ne garde que la dernière qui après un split('_') a une longueur de 7
+                    if len(dic['href'].split('/')[-1].split('_'))==7:
+                        res.append(dic['href'])
+            else:
+                if href[-8:] not in lst_indesirables:
+                    res.append(dic['href'])
     return res
 
 def suppr_doublons_list_ortho(lst):
@@ -330,6 +342,7 @@ class DlgBbox(c4d.gui.GeDialog):
     CHECKBOX_MNT2M = 1500
     CHECKBOX_MNT50CM = 1501
     CHECKBOX_BATI3D = 1502
+    CHECKBOX_BATI3D_V3 = 1505
     CHECKBOX_ORTHO2M = 1503
     CHECKBOX_ORTHO10CM = 1504
     CHECKBOX_TREES = 1506
@@ -355,6 +368,7 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_MNT2M = "MNT 2m"
     LABEL_MNT50CM = "MNT 50cm"
     LABEL_BATI3D = "Bâtiments 3D"
+    LABEL_BATI3D_V3 = "Bâtiments 3D V3 (pour impression 3D)"
     LABEL_ORTHO2M = "Orthophoto 2m"
     LABEL_ORTHO10CM = "Orthophoto 10cm"
     LABEL_TREES = "Arbres isolés"
@@ -410,6 +424,7 @@ class DlgBbox(c4d.gui.GeDialog):
     mnt2m = False
     mnt50cm = False
     bati3D = False
+    bati3D_v3 = False
     ortho2m = False
     ortho10cm = False
 
@@ -506,8 +521,9 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
 
-        self.GroupBegin(606, flags=c4d.BFH_CENTER, cols=1, rows=1)
+        self.GroupBegin(606, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.LABEL_BATI3D)
+        self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.LABEL_BATI3D_V3)
         self.GroupEnd()
 
         self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
@@ -567,6 +583,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
         self.SetBool(self.CHECKBOX_MNT2M,True)
         self.SetBool(self.CHECKBOX_BATI3D,True)
+        self.SetBool(self.CHECKBOX_BATI3D_V3,False)
         self.SetBool(self.CHECKBOX_ORTHO2M,True)
         self.SetBool(self.CHECKBOX_TREES,True)
         self.SetBool(self.CHECKBOX_FOREST,True)
@@ -841,6 +858,9 @@ class DlgBbox(c4d.gui.GeDialog):
         if id == self.CHECKBOX_BATI3D:
             pass
 
+        if id == self.CHECKBOX_BATI3D_V3:
+            pass
+
         if id == self.CHECKBOX_ORTHO2M:
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_ORTHO10CM):
@@ -947,6 +967,14 @@ class DlgBbox(c4d.gui.GeDialog):
                     urls+= lst
                     #for v in lst : print(v)
                     #print('---------')
+                
+                #BATI3D V3
+                if self.GetBool(self.CHECKBOX_BATI3D_V3):
+                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['bati3D_v3']
+                    lst = get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax,gdb=True)
+                    urls+= lst
+                    #for v in lst : print(v)
+                    #print('---------')
 
                 #ORTHO
                 if self.GetBool(self.CHECKBOX_ORTHO2M) or self.GetBool(self.CHECKBOX_ORTHO10CM):
@@ -995,6 +1023,10 @@ class DlgBbox(c4d.gui.GeDialog):
                     elif '_2_'in name_file and not 'swissbuildings3d' in name_file :
                         path_dir+='_2m'
 
+                    #bricolage pour v3 de swsisbuildings3d
+                    elif 'swissbuildings3d_3_0' in name_file:
+                        path_dir+='_v3'
+                    
                     if not os.path.isdir(path_dir):
                         os.mkdir(path_dir)
 
@@ -1114,6 +1146,7 @@ class DlgBbox(c4d.gui.GeDialog):
                     mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
                     mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
                     bati3D = self.GetBool(self.CHECKBOX_BATI3D)
+                    bati3D_v3 = self.GetBool(self.CHECKBOX_BATI3D_V3)
                     ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
                     ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
 
@@ -1126,7 +1159,7 @@ class DlgBbox(c4d.gui.GeDialog):
                             arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
 
 
-                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
+                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
                     c4d.EventAdd()
 
             
@@ -1151,6 +1184,7 @@ URL_STAC_SWISSTOPO_BASE = 'https://data.geo.admin.ch/api/stac/v0.9/collections/'
 DIC_LAYERS = {'ortho':'ch.swisstopo.swissimage-dop10',
               'mnt':'ch.swisstopo.swissalti3d',
               'bati3D':'ch.swisstopo.swissbuildings3d_2',
+              'bati3D_v3':'ch.swisstopo.swissbuildings3d_3_0',
               }
 def main():
     dlg = DlgBbox()

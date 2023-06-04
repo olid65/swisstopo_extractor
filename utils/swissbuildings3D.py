@@ -298,7 +298,7 @@ def classementPolygone(op):
         op.InsertTag(tag_facade)
         
 
-def importSwissBuidings(path, doc, cube_mnt):
+def importSwissBuildings(path, doc, cube_mnt):
     cube_mnt = cube_mnt.GetClone()
     cube_mnt.SetMg(c4d.Matrix(cube_mnt.GetMg()))
     
@@ -331,7 +331,7 @@ def importSwissBuidings(path, doc, cube_mnt):
         else: break
     
     buildings = c4d.BaseObject(c4d.Onull)
-    buildings.SetName('swissbuidings3D')
+    buildings.SetName('swissbuildings3D')
     for obj in lst_swissbuildings:
         obj.InsertUnderLast(buildings)    
         

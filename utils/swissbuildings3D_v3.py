@@ -122,16 +122,17 @@ class Bbox(object):
         maxi = basedraw.SW(c4d.Vector(largeur,0,0)) + origine
         return Bbox(mini,maxi)
     
-def get_swissbuildings3D_dxfs(path):
+def get_swissbuildings3D_v3_gdbs(path):
     """renvoie une liste de fichier dxf contenus dans
        un sous-dossier qui contient le mot swissbuildings3d"""
-    lst_dxf = None
+    lst_gdb = None
 
     for root, dirs, files in os.walk(path, topdown=False):
         for name in dirs:
-            if 'swissbuildings3d' in name:
-                lst_dxf = [fn_dxf for fn_dxf in glob(os.path.join(root, name,'*.dxf'))]
-    return lst_dxf
+            #print(name)
+            if name == 'swissbuildings3d_v3' :
+                lst_gdb = [fn_dxf for fn_dxf in glob(os.path.join(root, name,'*.gdb'))]
+    return lst_gdb
 
 def import_swissbuildings3D_from_list_dxf(lst_dxfs,doc, origin = None):
     #mise en cm des options d'importation DXF
@@ -298,7 +299,7 @@ def classementPolygone(op):
         op.InsertTag(tag_facade)
         
 
-def importSwissBuidings(path, doc, cube_mnt):
+def importSwissBuildings(path, doc, cube_mnt):
     cube_mnt = cube_mnt.GetClone()
     cube_mnt.SetMg(c4d.Matrix(cube_mnt.GetMg()))
     
@@ -319,7 +320,13 @@ def importSwissBuidings(path, doc, cube_mnt):
     
     bbx = Bbox.fromObj(cube_mnt)    
     
-    lst_dxfs = get_swissbuildings3D_dxfs(path)
+    lst_gdbs = get_swissbuildings3D_v3_gdbs(path)
+    #conversion des gdbs en shapefile
+    lst_shp = []
+    
+
+
+
     import_swissbuildings3D_from_list_dxf(lst_dxfs,doc, origin = origine)
 
     lst_swissbuildings =[]
@@ -372,7 +379,7 @@ def main():
     path = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo/PLO/swisstopo'
     doc = c4d.documents.GetActiveDocument()
     cube_mnt = op
-    buildings = importSwissBuidings(path, doc, cube_mnt)
+    buildings = importSwissBuildings(path, doc, cube_mnt)
     
     doc.InsertObject(buildings)
     c4d.EventAdd()

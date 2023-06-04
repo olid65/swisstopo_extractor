@@ -317,6 +317,52 @@ def isRectangleNordSud(sp):
             return False
     return True
 
+def get_spline_from_plane(obj):
+    pts = [c4d.Vector(p*obj.GetMg()) for p in obj.GetAllPoints()]
+
+    if len(pts)<3 :
+        print('pas assez de points')
+        return
+    p1,p2,*r = pts
+
+    p1.y = 0
+    p2.y = 0
+
+    off = c4d.Vector(p1)
+    v1 = (p2-p1).GetNormalized()
+
+    if v1 == c4d.Vector(0):
+        print('pas conforme')
+        return
+    if v1.y :
+        print('pas horizontal')
+        return
+
+    v2 = c4d.Vector(0,1,0)
+    v3 = v1.Cross(v2)
+
+    mg = c4d.Matrix(off,v1,v2,v3)
+
+    #onull = c4d.BaseObject(c4d.Onull)
+    #onull.SetMg(mg)
+    #doc.InsertObject(onull)
+
+    #
+
+    pts = [p*~mg for p in pts]
+
+    xmin = min([p.x for p in pts])
+    xmax = max([p.x for p in pts])
+    zmin = min([p.z for p in pts])
+    zmax = max([p.z for p in pts])
+
+    sp = c4d.SplineObject(4,c4d.SPLINETYPE_LINEAR)
+    sp.SetAllPoints([c4d.Vector(xmin,0,zmin),c4d.Vector(xmax,0,zmin),c4d.Vector(xmax,0,zmax),c4d.Vector(xmin,0,zmax)])
+    sp[c4d.SPLINEOBJECT_CLOSED] = True
+    sp.SetMg(mg)
+    sp.SetName(obj.GetName())
+    return sp
+
 class DlgBbox(c4d.gui.GeDialog):
     N_MIN = 1015
     N_MAX = 1016
@@ -754,6 +800,15 @@ class DlgBbox(c4d.gui.GeDialog):
             #ID_CHECKBOX_CUT_WITH_SPLINE
 
             sp = obj.GetRealSpline()
+
+            #si pas de spline on regarde si on a un plan  que l'on transforme en spline découpe
+            if not sp:
+                if not obj.CheckType(c4d.Opoint):
+                    obj = obj.GetCache()
+                if obj :
+                    sp = get_spline_from_plane(obj)
+
+
             if sp and not isRectangleNordSud(sp):
                 self.SetBool(self.ID_CHECKBOX_CUT_WITH_SPLINE,True)
                 self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, True)

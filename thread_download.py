@@ -17,6 +17,8 @@ class ThreadDownload(c4d.threading.C4DThread):
 
     def Main(self):
 
+        #TODO inclure les opérations GDAL/OGR dans le thread
+        
         for url,fn_dst in self.lst :
 
             try:

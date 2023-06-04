@@ -34,6 +34,7 @@ import utils.mnt as importMNT
 import utils.nearest_location
 import utils.dir_extract
 import utils.swissbuildings3D as swissbuildings3D
+import utils.swissbuildings3D_v3 as swissbuildings3D_v3
 import utils.cut_obj_from_spline
 import utils.geojson_trees
 import utils.mograph_trees
@@ -489,7 +490,7 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
@@ -658,12 +659,24 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     if bati3D:
         if spline_decoupe:
             volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-            buildings = swissbuildings3D.importSwissBuidings(pth, doc, volume_decoupe)
+            buildings = swissbuildings3D.importSwissBuildings(pth, doc, volume_decoupe)
         else:
-            buildings = swissbuildings3D.importSwissBuidings(pth, doc, cube_mnt)
+            buildings = swissbuildings3D.importSwissBuildings(pth, doc, cube_mnt)
         
         if buildings :
             buildings.InsertUnderLast(null_maquette)
+    
+    #Swissbuildings3D v3
+    buildings_v3 = None
+    if bati3D_v3:
+        if spline_decoupe:
+            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe)
+        else:
+            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt)
+        
+        if buildings_v3 :
+            buildings_v3.InsertUnderLast(null_maquette)
 
     ###################################
     # ARBRES
@@ -829,8 +842,7 @@ if __name__=='__main__':
         #pth = 'E:/OD/Vallee_du_Trient/SIG/swisstopo_extraction_diligences/vernayaz'
         pth = c4d.storage.LoadDialog(flags = c4d.FILESELECT_DIRECTORY,title="Dossier contenant les .dxf de swisstopo")
         
-        if pth : 
-    
+        if pth :    
             mini,maxi = empriseObject(op,origine)
             xmin,ymin,xmax,ymax = mini.x,mini.z,maxi.x,maxi.z
             main(doc,origine,pth,xmin,ymin,xmax,ymax)

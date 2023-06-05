@@ -398,6 +398,11 @@ class DlgBbox(c4d.gui.GeDialog):
     ID_TAILLE_MAILLE_MNT = 1509
     ID_CHECKBOX_CUT_WITH_SPLINE = 1510
 
+    ID_SCALE_MNT = 1511
+    ID_SCALE_BUILDINGS = 1512
+    ID_LABEL_SCALE_MNT = 1513
+    ID_LABEL_SCALE_BUILDINGS = 1514
+
 
     CHECKBOX_SWISSTOPO_FOLDER = 1515
 
@@ -419,6 +424,9 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_ORTHO10CM = "Orthophoto 10cm"
     LABEL_TREES = "Arbres isolés"
     LABEL_FOREST = "Cordons boisés et forêts"
+
+    LABEL_SCALE_MNT = "Exagération vert. du MNT"
+    LABEL_SCALE_BUILDINGS = "Exagération vert. des bâtiments et des arbres"
 
     LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
 
@@ -582,10 +590,18 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_FOREST, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_FOREST)
         self.GroupEnd()
 
-        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=1, rows=3)
+        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=2, rows=4)
         self.GroupBorderSpace(self.MARGIN , self.MARGIN, self.MARGIN, self.MARGIN)
+
         self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name='nombre polygones MNT', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
+        
+        self.AddStaticText(self.ID_LABEL_SCALE_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_MNT, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.AddEditNumber(self.ID_SCALE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
+
+        self.AddStaticText(self.ID_LABEL_SCALE_BUILDINGS, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_BUILDINGS, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.AddEditNumber(self.ID_SCALE_BUILDINGS, flags=c4d.BFH_MASK, initw=100, inith=20)
+
         self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
 
@@ -637,6 +653,9 @@ class DlgBbox(c4d.gui.GeDialog):
         self.taille_maille = 2.0
 
         self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+
+        self.SetFloat(self.ID_SCALE_MNT, 1.0)
+        self.SetFloat(self.ID_SCALE_BUILDINGS, 1.0)
 
         self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
 

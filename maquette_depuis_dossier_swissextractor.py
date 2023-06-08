@@ -673,7 +673,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
             volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
             buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe)
         else:
-            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt)
+            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
         
         if buildings_v3 :
             buildings_v3.InsertUnderLast(null_maquette)

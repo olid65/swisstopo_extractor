@@ -253,10 +253,10 @@ def untriangulate(lst_objs,doc):
                                     doc=doc)
 
 
-def importSwissBuildings(path, doc, cube_mnt):
+def importSwissBuildings(path, doc, cube_mnt,xmin,zmin,xmax,zmax):
     #emprise objet
     origine = doc[CONTAINER_ORIGIN]
-    xmin,zmin,xmax,zmax = empriseObject(cube_mnt, origine)
+    #xmin,zmin,xmax,zmax = empriseObject(cube_mnt, origine)
 
     #nouveau doc pour Polygonize
     doc = c4d.documents.BaseDocument()

@@ -671,7 +671,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
     if bati3D_v3:
         if spline_decoupe:
             volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe)
+            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
         else:
             buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
         

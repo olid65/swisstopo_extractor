@@ -230,6 +230,7 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax, gdb = False):
     #pour les bati3D il y a chaque fois toute la Suisse dans 2 gdb
     #pour les mnt on aussi du xyz
     # attention bien prendre les 8 derniers caractères
+    
     if gdb :
         lst_indesirables = []
     else:
@@ -242,27 +243,42 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax, gdb = False):
 
 
     url += sufixe_url
-    f = urllib.request.urlopen(url)
-    txt = f.read().decode('utf-8')
-    json_res = json.loads(txt)
 
     res = []
 
-    for item in json_res['features']:
-        for k,dic in item['assets'].items():
-            href = dic['href']
-            if gdb:
-                #on garde que les gdb
-                if href[-8:] == '.gdb.zip':
-                    #dans la version 3 on a soit un url qui se termine par swissbuildings3d_3_0_2021_2056_5728.gdb.zip
-                    #qui contient la moitié de la suisse
-                    #ou swissbuildings3d_3_0_2020_1301-31_2056_5728.gdb.zip sous forme de tuile
-                    #-> donc on ne garde que la dernière qui après un split('_') a une longueur de 7
-                    if len(dic['href'].split('/')[-1].split('_'))==7:
-                        res.append(dic['href'])
-            else:
-                if href[-8:] not in lst_indesirables:
-                    res.append(dic['href'])
+    #ATTENTION : chaque requête est apparemment limitée à 100 résultats
+    #Il y a un dans la réponse sous links un paramètre next ... -> d'où la boucle while
+    #dans laquelle on regarde s'il y a un next
+    #voir avec cet exemple
+    #https://data.geo.admin.ch/api/stac/v0.9/collections/ch.swisstopo.swissalti3d/items?bbox=6.797407364919968,46.35199189622441,6.989626299351063,46.41380860470992
+
+    while url :
+        f = urllib.request.urlopen(url)
+        txt = f.read().decode('utf-8')
+        json_res = json.loads(txt)
+        print(url)
+        url = None
+        links = json_res.get('links', None)
+        if links :
+            for link in links:
+                if link['rel'] == 'next':
+                    url = link['href']   
+        
+        for item in json_res['features']:
+            for k,dic in item['assets'].items():
+                href = dic['href']
+                if gdb:
+                    #on garde que les gdb
+                    if href[-8:] == '.gdb.zip':
+                        #dans la version 3 on a soit un url qui se termine par swissbuildings3d_3_0_2021_2056_5728.gdb.zip
+                        #qui contient la moitié de la suisse
+                        #ou swissbuildings3d_3_0_2020_1301-31_2056_5728.gdb.zip sous forme de tuile
+                        #-> donc on ne garde que la dernière qui après un split('_') a une longueur de 7
+                        if len(dic['href'].split('/')[-1].split('_'))==7:
+                            res.append(dic['href'])
+                else:
+                    if href[-8:] not in lst_indesirables:
+                        res.append(dic['href'])           
     return res
 
 def suppr_doublons_list_ortho(lst):
@@ -1027,6 +1043,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
                     url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['mnt']
                     lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax) if tri in v]
+                    
                     urls+= lst
                     #for v in lst : print(v)
                     #print('---------')

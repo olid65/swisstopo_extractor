@@ -256,7 +256,7 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax, gdb = False):
         f = urllib.request.urlopen(url)
         txt = f.read().decode('utf-8')
         json_res = json.loads(txt)
-        print(url)
+        #print(url)
         url = None
         links = json_res.get('links', None)
         if links :

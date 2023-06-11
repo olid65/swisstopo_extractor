@@ -5,10 +5,9 @@ from math import pi
 
 PLUGIN_ID = 1059170
 
-#Sélectionner d'abord l'objet plan puis l'objet sur lequel on veut mettre le matériau
+#Sélectionner d'abord l'objet plan puis les objets sur lesquels on veut mettre le matériau
 #s'il n'y a pas déjà une propriété matériau avec ce matériau, crée la propriété
 #ajuste selon le plan (si la propriété existe, la modifie)
-#ne fonctionnne que pour les plans en vue de haut !
 
 
 
@@ -150,21 +149,23 @@ def transfert_mat(plane, obj_dst, doc):
 # Main function
 def main():
     try :
-        plane, obj_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
+        plane, *lst_objs_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
     except:
-        c4d.gui.MessageDialog("Vous devez sélectioner deux objets, l'objet plan avec le matériau, puis l'objet de destination")
+        c4d.gui.MessageDialog("Vous devez sélectioner au moins deux objets, l'objet plan avec le matériau, puis les objets de destination en appuyant sur la touche CTRL/CMD")
         return
-    transfert_mat(plane, obj_dst)
+    for obj_dst in lst_objs_dst:
+        transfert_mat(plane, obj_dst, doc)
 
 class MaterialTransfer(c4d.plugins.CommandData):
     def Execute(self, doc):
         doc.StartUndo()
         try :
-            plane, obj_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
+            plane, *lst_objs_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
         except:
-            c4d.gui.MessageDialog("Vous devez sélectioner deux objets, l'objet plan avec le matériau, puis l'objet de destination")
+            c4d.gui.MessageDialog("Vous devez sélectioner au moins deux objets, l'objet plan avec le matériau, puis les objets de destination en appuyant sur la touche CTRL/CMD")
             return
-        transfert_mat(plane, obj_dst,doc)
+        for obj_dst in lst_objs_dst:
+            transfert_mat(plane, obj_dst, doc)
         doc.EndUndo()
         return True
 
@@ -179,8 +180,8 @@ def icone(nom) :
 if __name__ == "__main__":
     # Registers the plugin
     c4d.plugins.RegisterCommandPlugin(id=PLUGIN_ID,
-                                      str="#$04Transfert de matériau d'un plan sur un terrain",
+                                      str="#$04Transfert de matériau d'un plan sur des objets",
                                       info=0,
-                                      help="Sélectionner d'abord le plan et ensuite le terrain en appuyant sur CTRL/CMD",
+                                      help="Sélectionner d'abord le plan et ensuite les objets de destination en appuyant sur CTRL/CMD",
                                       dat=MaterialTransfer(),
                                       icon=icone("od_material_transfer.tif"))

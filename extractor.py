@@ -461,6 +461,7 @@ class DlgBbox(c4d.gui.GeDialog):
     TXT_NO_PATH_TO_QGIS_FINAL = "Sans Qgis l'import de la maquette est impossible !"
 
     TXT_NO_ORIGIN = "Le document n'est pas géoréférencé !"
+    TXT_ORIGIN_NOT_ON_GROUND = "L'origine du document n'est pas sur le sol !"
     TXT_NOT_VIEW_TOP = "Vous devez activer une vue de haut !"
     TXT_NO_SELECTION = "Vous devez sélectionner un objet !"
     TXT_MULTI_SELECTION = "Vous devez sélectionner un seul objet !"
@@ -817,6 +818,9 @@ class DlgBbox(c4d.gui.GeDialog):
             if not origine:
                 c4d.gui.MessageDialog(self.TXT_NO_ORIGIN)
                 return True
+            if origine.y != 0:
+                c4d.gui.MessageDialog(self.TXT_ORIGIN_NOT_ON_GROUND)
+                return True
             op = doc.GetActiveObjects(0)
             if not op:
                 c4d.gui.MessageDialog(self.TXT_NO_SELECTION)
@@ -863,7 +867,9 @@ class DlgBbox(c4d.gui.GeDialog):
             if not origine:
                 c4d.gui.MessageDialog(self.TXT_NO_ORIGIN)
                 return True
-
+            if origine.y != 0:
+                c4d.gui.MessageDialog(self.TXT_ORIGIN_NOT_ON_GROUND)
+                return True
             bd = doc.GetActiveBaseDraw()
             camera = bd.GetSceneCamera(doc)
             if not camera[c4d.CAMERA_PROJECTION] == c4d.Ptop:

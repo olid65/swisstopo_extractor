@@ -345,8 +345,8 @@ def importSwissBuildings(path, doc, cube_mnt):
     batis = connect(lst_bat, nom = 'swissbuildings3D')
     
     #CONNEXION DES BATIMENTS RESTANTS
-    lst_bat = getPolyObj(buildings, lst = [])
-    batis = connect(lst_bat, nom = 'swissbuildings3D')
+    #lst_bat = getPolyObj(buildings, lst = [])
+    #batis = connect(lst_bat, nom = 'swissbuildings3D')
 
 
     boole = c4d.BaseObject(c4d.Oboole)

@@ -12,6 +12,7 @@ GEOTAG_ID = 1026472
 
 DIRNAME_MNT2M = 'swissalti3d_2m'
 DIRNAME_MNT50CM = 'swissalti3d_50cm'
+DIRNAME_MNS = 'swisssurface3d-raster_50cm'
 DIRNAME_BATI3D = 'swissbuildings3d'
 DIRNAME_ORTHO2M = 'swissimage-dop10_2m'
 DIRNAME_ORTHO10CM = 'swissimage-dop10_10cm'
@@ -490,7 +491,7 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
@@ -532,6 +533,21 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,bati3D,
 
             if os.path.isfile(fn_mnt50cm):
                 lst_asc.append(fn_mnt50cm)
+    
+    if mns:
+        taille_maille_mns = 0.5
+        pth_tuiles_mns = os.path.join(pth,DIRNAME_MNS)
+        if os.path.isdir(pth_tuiles_mns):
+            #VRT
+            fn_mns_vrt = createVRTfromDir(pth_tuiles_mns, path_to_gdalbuildvrt = None)
+            #extraction mnt
+            fn_mns = fn_mns_vrt.replace('.vrt','.asc')
+            if spline_decoupe and fn_shp :
+                extractFromSpline(fn_shp,fn_mns_vrt, fn_mns,taille_maille_mns, form = 'AAIGrid', path_to_gdalwarp = None)
+            else:
+                extractFromBbox(fn_mns_vrt, fn_mns,xmin,ymin,xmax,ymax,taille_maille = taille_maille_mns ,form = 'AAIGrid',path_to_gdal_translate = None)
+            if os.path.isfile(fn_mns):
+                lst_asc.append(fn_mns)
 
     if ortho2m:
         pth_tuiles_ortho2m = os.path.join(pth,DIRNAME_ORTHO2M)

@@ -41,6 +41,7 @@ URL_STAC_SWISSTOPO_BASE = 'https://data.geo.admin.ch/api/stac/v0.9/collections/'
 
 DIC_LAYERS = {'ortho':'ch.swisstopo.swissimage-dop10',
               'mnt':'ch.swisstopo.swissalti3d',
+              'mns':'ch.swisstopo.swisssurface3d-raster',
               'bati3D':'ch.swisstopo.swissbuildings3d_2',
               }
 
@@ -403,6 +404,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
     CHECKBOX_MNT2M = 1500
     CHECKBOX_MNT50CM = 1501
+    CHECKBOX_MNS = 1520
     CHECKBOX_BATI3D = 1502
     CHECKBOX_BATI3D_V3 = 1505
     CHECKBOX_ORTHO2M = 1503
@@ -434,8 +436,9 @@ class DlgBbox(c4d.gui.GeDialog):
 
     LABEL_MNT2M = "MNT 2m"
     LABEL_MNT50CM = "MNT 50cm"
+    LABEL_MNS = "MNS (modèle numérique de surface)"
     LABEL_BATI3D = "Bâtiments 3D"
-    LABEL_BATI3D_V3 = "Bâtiments 3D V3 (pour impression 3D)"
+    LABEL_BATI3D_V3 = "Bâtiments 3D v3 (print 3D)"
     LABEL_ORTHO2M = "Orthophoto 2m"
     LABEL_ORTHO10CM = "Orthophoto 10cm"
     LABEL_TREES = "Arbres isolés"
@@ -585,16 +588,20 @@ class DlgBbox(c4d.gui.GeDialog):
         #CHOIX COUCHES
         self.AddStaticText(401, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LAYER_CHOICE, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=5)
+        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=6)
 
         self.GroupBegin(601, flags=c4d.BFH_CENTER, cols=2, rows=1)
         self.AddCheckbox(self.CHECKBOX_MNT2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT2M)
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
 
+        self.GroupBegin(602, flags=c4d.BFH_CENTER, cols=1, rows=1)
+        self.AddCheckbox(self.CHECKBOX_MNS, flags=c4d.BFH_LEFT, initw=300, inith=20, name=self.LABEL_MNS)
+        self.GroupEnd()
+
         self.GroupBegin(606, flags=c4d.BFH_CENTER, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.LABEL_BATI3D)
-        self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.LABEL_BATI3D_V3)
+        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D)
+        self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D_V3)
         self.GroupEnd()
 
         self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
@@ -607,17 +614,17 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_FOREST, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_FOREST)
         self.GroupEnd()
 
-        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=2, rows=4)
+        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=2, rows=2)
         self.GroupBorderSpace(self.MARGIN , self.MARGIN, self.MARGIN, self.MARGIN)
 
-        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name='nombre polygones MNT', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name='nombre polygones MNT/MNS', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
         
-        self.AddStaticText(self.ID_LABEL_SCALE_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_MNT, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
-        self.AddEditNumber(self.ID_SCALE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
+        #self.AddStaticText(self.ID_LABEL_SCALE_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_MNT, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        #self.AddEditNumber(self.ID_SCALE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
 
-        self.AddStaticText(self.ID_LABEL_SCALE_BUILDINGS, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_BUILDINGS, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
-        self.AddEditNumber(self.ID_SCALE_BUILDINGS, flags=c4d.BFH_MASK, initw=100, inith=20)
+        #self.AddStaticText(self.ID_LABEL_SCALE_BUILDINGS, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_BUILDINGS, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        #self.AddEditNumber(self.ID_SCALE_BUILDINGS, flags=c4d.BFH_MASK, initw=100, inith=20)
 
         self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
@@ -662,6 +669,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
         self.SetBool(self.CHECKBOX_MNT2M,True)
         self.SetBool(self.CHECKBOX_BATI3D,True)
+        self.SetBool(self.CHECKBOX_MNS,True)
         self.SetBool(self.CHECKBOX_BATI3D_V3,False)
         self.SetBool(self.CHECKBOX_ORTHO2M,True)
         self.SetBool(self.CHECKBOX_TREES,True)
@@ -951,6 +959,9 @@ class DlgBbox(c4d.gui.GeDialog):
             self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille)
             self.majNombresPolys()
 
+        if id == self.CHECKBOX_MNS:
+            pass
+
         if id == self.CHECKBOX_BATI3D:
             pass
 
@@ -1053,6 +1064,16 @@ class DlgBbox(c4d.gui.GeDialog):
                     urls+= lst
                     #for v in lst : print(v)
                     #print('---------')
+                
+                #MNS
+                if self.GetBool(self.CHECKBOX_MNS):
+                    #Attention le mns est obligatoirement en 50cm !!!!
+                    #TODO : avertir s'il y a beaucoup de polygones
+                    
+                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['mns']
+                    lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax)]
+                    
+                    urls+= lst
 
                 #BATI3D
                 if self.GetBool(self.CHECKBOX_BATI3D):
@@ -1242,6 +1263,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
                     mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
                     mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
+                    mns = self.GetBool(self.CHECKBOX_MNS)
                     bati3D = self.GetBool(self.CHECKBOX_BATI3D)
                     bati3D_v3 = self.GetBool(self.CHECKBOX_BATI3D_V3)
                     ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
@@ -1256,7 +1278,7 @@ class DlgBbox(c4d.gui.GeDialog):
                             arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
 
 
-                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
+                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,mns,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
                     c4d.EventAdd()
 
             
@@ -1280,6 +1302,7 @@ URL_STAC_SWISSTOPO_BASE = 'https://data.geo.admin.ch/api/stac/v0.9/collections/'
 
 DIC_LAYERS = {'ortho':'ch.swisstopo.swissimage-dop10',
               'mnt':'ch.swisstopo.swissalti3d',
+              'mns':'ch.swisstopo.swisssurface3d-raster',
               'bati3D':'ch.swisstopo.swissbuildings3d_2',
               'bati3D_v3':'ch.swisstopo.swissbuildings3d_3_0',
               }

@@ -640,10 +640,13 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
     
 
     alt_min = 0
-    #Modèle(s) de terrain
+
+    #Modèle(s) de terrain et de surface
     mnt = None
+    mns = None
     cube_mnt = get_cube_from_bbox(xmin,ymin,xmax,ymax, origine)
     for fn_asc in lst_asc:
+        pred_mnt = mnt
         mnt = importMNT.terrainFromASC(fn_asc,doc)
         if spline_decoupe:
             volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
@@ -657,17 +660,25 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
             #alt_min = socle(mnt,doc)
             mnt.InsertUnderLast(null_maquette)
 
-
-            #CUBE pour la découpe des batiments
-            cube_mnt = get_cube_from_obj(mnt)
-            pos = cube_mnt.GetRelPos()
-            #lorsque l'on génére le mnt la position se fait par le geotag
-            #et le déplacement se fait après, du coup c'est le moyen pas très élégant
-            #que j'ai trouvé pour que le cube soit au bon endroit'
-            geotag = mnt.GetTag(GEOTAG_ID)
-            if geotag:
-                pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
-                cube_mnt.SetRelPos(pos)
+            #si c'est un mns il ne faut pas le prendre comme mnt
+            #sinon les arbres ne seront pas justes (calcul de la base sur mnt)
+            if DIRNAME_MNS in fn_asc:
+                mns = mnt
+                mnt = pred_mnt
+                #on rend le mns invisible à la vue et au rendu
+                mns[c4d.ID_BASEOBJECT_VISIBILITY_EDITOR] = c4d.OBJECT_OFF
+                mns[c4d.ID_BASEOBJECT_VISIBILITY_RENDER] = c4d.OBJECT_OFF
+            else:
+                #CUBE pour la découpe des batiments
+                cube_mnt = get_cube_from_obj(mnt)
+                pos = cube_mnt.GetRelPos()
+                #lorsque l'on génére le mnt la position se fait par le geotag
+                #et le déplacement se fait après, du coup c'est le moyen pas très élégant
+                #que j'ai trouvé pour que le cube soit au bon endroit'
+                geotag = mnt.GetTag(GEOTAG_ID)
+                if geotag:
+                    pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
+                    cube_mnt.SetRelPos(pos)
 
 
     #Swissbuidings3D

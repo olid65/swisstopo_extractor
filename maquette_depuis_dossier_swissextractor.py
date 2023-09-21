@@ -491,7 +491,7 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
@@ -502,7 +502,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
     #création du shapefile pour le découpage
     if spline_decoupe:
         fn_shp = os.path.join(pth,'__emprise__.shp')
-        fn_shp = shapefileFromSpline(spline_decoupe,doc,fn_shp,buffer = 2*taille_maille)
+        fn_shp = shapefileFromSpline(spline_decoupe,doc,fn_shp,buffer = 2*taille_maille_mnt)
 
     if mnt2m:
         pth_tuiles_mnt2m = os.path.join(pth,DIRNAME_MNT2M)
@@ -512,9 +512,9 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
             #extraction mnt
             fn_mnt2m = fn_mnt2m_vrt.replace('.vrt','.asc')
             if spline_decoupe and fn_shp :
-                extractFromSpline(fn_shp,fn_mnt2m_vrt, fn_mnt2m,taille_maille, form = 'AAIGrid', path_to_gdalwarp = None)
+                extractFromSpline(fn_shp,fn_mnt2m_vrt, fn_mnt2m,taille_maille_mnt, form = 'AAIGrid', path_to_gdalwarp = None)
             else:
-                extractFromBbox(fn_mnt2m_vrt, fn_mnt2m,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)
+                extractFromBbox(fn_mnt2m_vrt, fn_mnt2m,xmin,ymin,xmax,ymax,taille_maille = taille_maille_mnt ,form = 'AAIGrid',path_to_gdal_translate = None)
 
             if os.path.isfile(fn_mnt2m):
                 lst_asc.append(fn_mnt2m)
@@ -527,9 +527,9 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
             #extraction mnt
             fn_mnt50cm = fn_mnt50cm_vrt.replace('.vrt','.asc')
             if spline_decoupe and fn_shp :
-                extractFromSpline(fn_shp,fn_mnt50cm_vrt, fn_mnt50cm,taille_maille, form = 'AAIGrid', path_to_gdalwarp = None)
+                extractFromSpline(fn_shp,fn_mnt50cm_vrt, fn_mnt50cm,taille_maille_mnt, form = 'AAIGrid', path_to_gdalwarp = None)
             else:
-                extractFromBbox(fn_mnt50cm_vrt, fn_mnt50cm,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)
+                extractFromBbox(fn_mnt50cm_vrt, fn_mnt50cm,xmin,ymin,xmax,ymax,taille_maille = taille_maille_mnt ,form = 'AAIGrid',path_to_gdal_translate = None)
 
             if os.path.isfile(fn_mnt50cm):
                 lst_asc.append(fn_mnt50cm)
@@ -611,7 +611,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille,mnt2m,mnt50cm,mns,bat
 
             elif 'swissalti3d' in name:
                 raster_dst = vrt_file.replace('.vrt','.asc')
-                extractFromBbox(vrt_file, raster_dst,xmin,ymin,xmax,ymax,taille_maille = taille_maille ,form = 'AAIGrid',path_to_gdal_translate = None)"""
+                extractFromBbox(vrt_file, raster_dst,xmin,ymin,xmax,ymax,taille_maille = taille_maille_mnt ,form = 'AAIGrid',path_to_gdal_translate = None)"""
 
     #lst_asc = [fn_asc for fn_asc in glob(os.path.join(pth,'*.asc'))]
     #lst_dxf = get_swissbuildings3D_dxfs(pth)

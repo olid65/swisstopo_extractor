@@ -414,12 +414,17 @@ class DlgBbox(c4d.gui.GeDialog):
 
     ID_TXT_NBRE_POLYS_MNT = 1508
     ID_TAILLE_MAILLE_MNT = 1509
-    ID_CHECKBOX_CUT_WITH_SPLINE = 1510
+    
+    ID_TXT_NBRE_POLYS_MNS = 1512
+    ID_TAILLE_MAILLE_MNS = 1513
 
-    ID_SCALE_MNT = 1511
-    ID_SCALE_BUILDINGS = 1512
-    ID_LABEL_SCALE_MNT = 1513
-    ID_LABEL_SCALE_BUILDINGS = 1514
+    ID_CHECKBOX_CUT_WITH_SPLINE = 1514
+
+
+    #ID_SCALE_MNT = 1511
+    #ID_SCALE_BUILDINGS = 1512
+    #ID_LABEL_SCALE_MNT = 1513
+    #ID_LABEL_SCALE_BUILDINGS = 1514
 
 
     CHECKBOX_SWISSTOPO_FOLDER = 1515
@@ -444,12 +449,12 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_TREES = "Arbres isolés"
     LABEL_FOREST = "Cordons boisés et forêts"
 
-    LABEL_SCALE_MNT = "Exagération vert. du MNT"
-    LABEL_SCALE_BUILDINGS = "Exagération vert. des bâtiments et des arbres"
+    #LABEL_SCALE_MNT = "Exagération vert. du MNT"
+    #LABEL_SCALE_BUILDINGS = "Exagération vert. des bâtiments et des arbres"
 
     LABEL_SWISSTOPO_FOLDER = f'télécharger dans le dossier "{FOLDER_NAME_SWISSTOPO}"'
 
-    TXT_NO_SURFACE = "Pas d'emprise définie"
+    TXT_NO_SURFACE = "-"
     TXT_SURFACE_NOMBRE_POLYS_MNT = "Nombre de polygones pour le MNT : "
     TXT_CUT_WITH_SPLINE = "Découpage selon la spline sélectionnée"
 
@@ -490,7 +495,8 @@ class DlgBbox(c4d.gui.GeDialog):
     origine = None
     pth_swisstopo_data = None
     bbox = None
-    taille_maille = None
+    taille_maille_mnt = None
+    taille_maille_mns = None
     mini = maxi = None
     total_polys = 0
 
@@ -588,37 +594,49 @@ class DlgBbox(c4d.gui.GeDialog):
         #CHOIX COUCHES
         self.AddStaticText(401, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_LAYER_CHOICE, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=6)
+        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=1, rows=8)
 
-        self.GroupBegin(601, flags=c4d.BFH_CENTER, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_MNT2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT2M)
+        self.GroupBegin(601, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddCheckbox(self.CHECKBOX_MNT2M, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_MNT2M)
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
 
-        self.GroupBegin(602, flags=c4d.BFH_CENTER, cols=1, rows=1)
+        self.GroupBegin(602, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        
+        self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_LEFT, initw=100, inith=15)
+        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_MASK, initw=200, inith=15, name='nb p. MNT', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.GroupEnd()
+
+        self.GroupBegin(603, flags=c4d.BFH_LEFT, cols=1, rows=1)
         self.AddCheckbox(self.CHECKBOX_MNS, flags=c4d.BFH_LEFT, initw=300, inith=20, name=self.LABEL_MNS)
         self.GroupEnd()
 
-        self.GroupBegin(606, flags=c4d.BFH_CENTER, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D)
+        self.GroupBegin(604, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddEditNumber(self.ID_TAILLE_MAILLE_MNS, flags=c4d.BFH_LEFT, initw=100, inith=15)
+        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNS, flags=c4d.BFH_MASK, initw=200, inith=15, name='nb p. MNS', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
+        self.GroupEnd()
+
+        self.GroupBegin(606, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_BATI3D)
         self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D_V3)
         self.GroupEnd()
 
-        self.GroupBegin(600, flags=c4d.BFH_CENTER, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_ORTHO2M, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO2M)
+        self.GroupBegin(607, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddCheckbox(self.CHECKBOX_ORTHO2M, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_ORTHO2M)
         self.AddCheckbox(self.CHECKBOX_ORTHO10CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO10CM)
         self.GroupEnd()
 
-        self.GroupBegin(605, flags=c4d.BFH_CENTER, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_TREES, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_TREES)
+        self.GroupBegin(608, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddCheckbox(self.CHECKBOX_TREES, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_TREES)
         self.AddCheckbox(self.CHECKBOX_FOREST, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_FOREST)
         self.GroupEnd()
 
-        self.GroupBegin(650, flags=c4d.BFH_CENTER, cols=2, rows=2)
+        self.GroupBegin(650, flags=c4d.BFH_LEFT, cols=2, rows=1)
         self.GroupBorderSpace(self.MARGIN , self.MARGIN, self.MARGIN, self.MARGIN)
 
-        self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name='nombre polygones MNT/MNS', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
-        self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
+        
+
+        
         
         #self.AddStaticText(self.ID_LABEL_SCALE_MNT, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_MNT, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         #self.AddEditNumber(self.ID_SCALE_MNT, flags=c4d.BFH_MASK, initw=100, inith=20)
@@ -626,7 +644,7 @@ class DlgBbox(c4d.gui.GeDialog):
         #self.AddStaticText(self.ID_LABEL_SCALE_BUILDINGS, flags=c4d.BFH_CENTER, initw=300, inith=20, name=self.LABEL_SCALE_BUILDINGS, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         #self.AddEditNumber(self.ID_SCALE_BUILDINGS, flags=c4d.BFH_MASK, initw=100, inith=20)
 
-        self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_MASK, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
+        self.AddCheckbox(self.ID_CHECKBOX_CUT_WITH_SPLINE, flags=c4d.BFH_LEFT, initw=300, inith=20, name=self.TXT_CUT_WITH_SPLINE)
         self.GroupEnd()
 
         self.GroupEnd()
@@ -675,12 +693,15 @@ class DlgBbox(c4d.gui.GeDialog):
         self.SetBool(self.CHECKBOX_TREES,True)
         self.SetBool(self.CHECKBOX_FOREST,True)
         self.SetMeter(self.ID_TAILLE_MAILLE_MNT, 2.0)
-        self.taille_maille = 2.0
+        self.taille_maille_mnt = 2.0
+        self.SetMeter(self.ID_TAILLE_MAILLE_MNS, 0.5)
+        self.taille_maille_mns = 0.5
 
         self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+        self.SetString(self.ID_TXT_NBRE_POLYS_MNS,self.TXT_NO_SURFACE)
 
-        self.SetFloat(self.ID_SCALE_MNT, 1.0)
-        self.SetFloat(self.ID_SCALE_BUILDINGS, 1.0)
+        #self.SetFloat(self.ID_SCALE_MNT, 1.0)
+        #self.SetFloat(self.ID_SCALE_BUILDINGS, 1.0)
 
         self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
 
@@ -725,29 +746,34 @@ class DlgBbox(c4d.gui.GeDialog):
         self.SetMeter(self.N_MIN, self.mini.z)
         self.SetMeter(self.E_MIN, self.mini.x)
         self.SetMeter(self.E_MAX, self.maxi.x)
-        self.majNombresPolys()
+        self.majNombresPolys(mnt=True)
+        self.majNombresPolys(mnt=False)
     
-    def majNombresPolys(self):
+    def majNombresPolys(self,mnt = True):
         if self.maxi and self.mini:
             larg = self.maxi.x - self.mini.x
             haut = self.maxi.z - self.mini.z
-
-            val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+            if mnt:
+                val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+                id_txt = self.ID_TXT_NBRE_POLYS_MNT
+            else:
+                val_px = self.GetFloat(self.ID_TAILLE_MAILLE_MNS)
+                id_txt = self.ID_TXT_NBRE_POLYS_MNS
 
             if not larg or not haut or not val_px:
-                self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
+                self.SetString(id_txt,self.TXT_NO_SURFACE)
             else:
                 nb_px_larg = round(round(larg /val_px,0))
                 nb_px_haut = round(haut/val_px,0)
                 self.total_polys = round(nb_px_larg * nb_px_haut)
                 total_txt = f'{self.total_polys:,}'.replace(",","'")
-                txt = f'{total_txt} polygones (boîte englobante)'
-                self.SetString(self.ID_TXT_NBRE_POLYS_MNT,txt)
+                txt = f' -> {total_txt} polys'
+                self.SetString(id_txt,txt)
             
             if self.total_polys > NB_POLYGONES_MAX:
-                self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
+                self.SetDefaultColor(id_txt, c4d.COLOR_TEXT, c4d.Vector(1.0, 0, 0))
             else:
-                self.SetDefaultColor(self.ID_TXT_NBRE_POLYS_MNT, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
+                self.SetDefaultColor(id_txt, c4d.COLOR_TEXT, c4d.Vector(0.0, 1.0, 0.0))
 
 
     def Command(self, id, msg):
@@ -806,7 +832,8 @@ class DlgBbox(c4d.gui.GeDialog):
             self.mini = c4d.Vector(xmin,0,zmin)
             self.maxi = c4d.Vector(xmax,0,zmax)
 
-            self.majNombresPolys()
+            self.majNombresPolys(mnt=True)
+            self.majNombresPolys(mnt=False)
         
         #DESSINER RECTANGLE
         if id==self.BTON_DRAW_RECTANGLE:
@@ -946,18 +973,19 @@ class DlgBbox(c4d.gui.GeDialog):
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_MNT50CM):
                 self.SetBool(self.CHECKBOX_MNT50CM,False)
-            self.taille_maille = 2
-            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille)
-            self.taille_maille = 2
-            self.majNombresPolys()
+            self.taille_maille_mnt = 2
+            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
+            self.taille_maille_mnt = 2
+            self.majNombresPolys(mnt=True)
+
 
         if id == self.CHECKBOX_MNT50CM:
             # si le 50 cm est actif on le désactive
             if self.GetBool(self.CHECKBOX_MNT2M):
                 self.SetBool(self.CHECKBOX_MNT2M,False)
-            self.taille_maille = 0.5
-            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille)
-            self.majNombresPolys()
+            self.taille_maille_mnt = 0.5
+            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
+            self.majNombresPolys(mnt=True)
 
         if id == self.CHECKBOX_MNS:
             pass
@@ -979,20 +1007,29 @@ class DlgBbox(c4d.gui.GeDialog):
                 self.SetBool(self.CHECKBOX_ORTHO2M,False)
 
 
-        #CHANGEMENT TAILLE DE LA MAILLE
+        #CHANGEMENT TAILLE DE LA MAILLE MNT
         if id==self.ID_TAILLE_MAILLE_MNT:
-            self.taille_maille = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
-            if self.taille_maille >=2 :
+            self.taille_maille_mnt = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+            if self.taille_maille_mnt >=2 :
                 self.SetBool(self.CHECKBOX_MNT2M,True)
                 self.SetBool(self.CHECKBOX_MNT50CM,False)
-            elif self.taille_maille <0.5 :
+            elif self.taille_maille_mnt <0.5 :
                 self.SetMeter(self.ID_TAILLE_MAILLE_MNT,0.5)
-                self.taille_maille = 0.5
+                self.taille_maille_mnt = 0.5
             else:
                 self.SetBool(self.CHECKBOX_MNT2M,False)
                 self.SetBool(self.CHECKBOX_MNT50CM,True)
 
-            self.majNombresPolys()
+            self.majNombresPolys(mnt = True)
+
+        #CHANGEMENT TAILLE DE LA MAILLE MNS
+        if id==self.ID_TAILLE_MAILLE_MNS:
+            self.taille_maille_mns = self.GetFloat(self.ID_TAILLE_MAILLE_MNS)
+            if self.taille_maille_mns <0.5 :
+                self.SetMeter(self.ID_TAILLE_MAILLE_MNS,0.5)
+                self.taille_maille_mnt = 0.5
+
+            self.majNombresPolys(mnt = False)
 
         if id == self.ID_CHECKBOX_CUT_WITH_SPLINE:
             
@@ -1256,10 +1293,10 @@ class DlgBbox(c4d.gui.GeDialog):
 
                     #Test pour ajouter une valeur de maille autour de la bbox
                     #pour obtenir au final exactement l'emprise (pas concluant)
-                    #xmin -= self.taille_maille
-                    xmax += self.taille_maille
-                    ymin -= self.taille_maille
-                    #ymax += self.taille_maille
+                    #xmin -= self.taille_maille_mnt
+                    xmax += self.taille_maille_mnt
+                    ymin -= self.taille_maille_mnt
+                    #ymax += self.taille_maille_mnt
 
                     mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
                     mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
@@ -1278,7 +1315,7 @@ class DlgBbox(c4d.gui.GeDialog):
                             arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
 
 
-                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille,mnt2m,mnt50cm,mns,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
+                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille_mnt,mnt2m,mnt50cm,mns,self.taille_maille_mns,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
                     c4d.EventAdd()
 
             

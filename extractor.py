@@ -669,7 +669,7 @@ class DlgBbox(c4d.gui.GeDialog):
 
         self.SetBool(self.CHECKBOX_MNT2M,True)
         self.SetBool(self.CHECKBOX_BATI3D,True)
-        self.SetBool(self.CHECKBOX_MNS,True)
+        self.SetBool(self.CHECKBOX_MNS,False)
         self.SetBool(self.CHECKBOX_BATI3D_V3,False)
         self.SetBool(self.CHECKBOX_ORTHO2M,True)
         self.SetBool(self.CHECKBOX_TREES,True)

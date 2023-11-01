@@ -22,6 +22,8 @@ NAME_MNT = 'swissalti3d'
 NAME_ARBRES = 'Arbres isolés'
 NAME_FORETS = 'Forêts'
 NAME_POLY_FORET = 'swissalti3d_2m_extrait'
+NAME_POLY_FORET_50cm = 'swissalti3d_50cm_extrait'
+#TODO : améliorer la recherche des forêts
 NAME_POINTS_ARBRES_ISOLES = 'arbres_isoles_swisstopo_collets'
 
 NAME_BATI3D = 'swissbuildings3d_v3'
@@ -212,6 +214,9 @@ def echelle_maquette(doc, scale_mnt, scale_buildings) -> None:
         for o in forets.GetChildren():
             polyobj = searchObjectInHierarchy(o, NAME_POLY_FORET,stop = o)
             if polyobj : lst_obj_poly.append(polyobj)
+            else:
+                polyobj = searchObjectInHierarchy(o, NAME_POLY_FORET_50cm,stop = o)
+                if polyobj : lst_obj_poly.append(polyobj)
 
         #cloners
         cloners_foret = searchCloneurs(forets, lst = [], stop = forets)

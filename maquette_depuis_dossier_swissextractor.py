@@ -492,6 +492,14 @@ def tex_folder(doc, subfolder = None):
 
 # Main function
 def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
+    #on vérifie que le moteur de rendu soit bien "Standard" ->0
+    #si ce n'est pas le cas on le met
+    rdata = doc.GetActiveRenderData()
+    
+    if rdata[c4d.RDATA_RENDERENGINE] != 0:
+        rdata[c4d.RDATA_RENDERENGINE] = 0
+    
+    
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'

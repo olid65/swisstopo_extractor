@@ -401,7 +401,7 @@ def main() -> None:
 
     path = "/Users/olivierdonze/Documents/TEMP/test_meyrin/swisstopo"
 
-    bats = importSwissBuildings(path, doc, cube_mnt)
+    bats = importSwissBuildings(path, doc, cube_mnt, xmin, zmin, xmax, zmax)
     doc.InsertObject(bats)
     doc.AddUndo(c4d.UNDOTYPE_NEW,bats)
     

@@ -95,7 +95,7 @@ def pointsOnSurface(op,mnt):
     op = op.GetClone()
     op.SetMg(mg_op)
     grc = c4d.utils.GeRayCollider()
-    grc.Init(mnt)
+    grc.Init(mnt, False)
 
     mg_mnt = mnt.GetMg()
     invmg_mnt = ~mg_mnt

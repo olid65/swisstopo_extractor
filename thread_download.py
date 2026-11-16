@@ -23,6 +23,11 @@ def download(url, destination):
             if not output.tell():
                 raise ValueError("Fichier vide.")
 
+        if url.startswith("https://wms.geo.admin.ch/") and target.suffix.lower() == ".tif":
+            with payload.open("rb") as stream:
+                if stream.read(4) not in (b"II*\x00", b"MM\x00*"):
+                    raise ValueError("Le service WMS n’a pas renvoyé une orthophoto TIFF.")
+
         if target.suffix.lower() == ".geojson":
             with payload.open(encoding="utf-8-sig") as stream:
                 data = json.load(stream)
@@ -76,6 +81,6 @@ class ThreadDownload(c4d.threading.C4DThread):
             try:
                 download(url, destination)
             except Exception as error:
-                self.errors.append(f"{Path(destination).name} — {error}")
+                self.errors.append((destination, f"{Path(destination).name} — {error}"))
             else:
                 self.completed += 1

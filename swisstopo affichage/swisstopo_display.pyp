@@ -1,166 +1,62 @@
-import c4d, os, sys
-import urllib.request
-#from c4d import plugins, bitmaps, gui, documents, Vector
-from c4d.plugins import GeLoadString as txt
-from datetime import datetime
+import os
+import sys
+import c4d
 
-__version__ = 1.0
-__date__    = "26/09/2021"
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from utils import swisstopo_background as bg
 
-
-ID_ORTHO = 1058393
-ID_CN10 = 1058394
-ID_CN25 = 1058396
-ID_CN50 = 1058397
-
-LYR_ORTHO = 'ch.swisstopo.images-swissimage'
-LYR_CN10 =  'ch.swisstopo.landeskarte-farbe-10'
-LYR_CN25 = 'ch.swisstopo.pixelkarte-farbe-pk25.noscale'
-LYR_CN50 =  'ch.swisstopo.pixelkarte-farbe-pk50.noscale'
-
-
-CONTAINER_ORIGIN =1026473
-
-NOT_SAVED_TXT = "Le document doit être enregistré pour pouvoir copier les textures dans le dossier tex, vous pourrez le faire à la prochaine étape\nVoulez-vous continuer ?"
-DOC_NOT_IN_METERS_TXT = "Les unités du document ne sont pas en mètres, si vous continuez les unités seront modifiées.\nVoulez-vous continuer ?"
-
-
-O_DEFAUT = c4d.Vector(2500000.00,0.0,1120000.00)
-
-
-#ch.swisstopo.landeskarte-farbe-10
-
-#ch.swisstopo.images-swissimage
-
-#exemples de requetes:
-
-#https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.landeskarte-farbe-10&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
-#https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.images-swissimage&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
-
-FORMAT = 'png'
-
-NOM_DOSSIER_IMG = 'tex/__back_image'
-
-def empriseVueHaut(bd,origine):
-
-    dimension = bd.GetFrame()
-    largeur = dimension["cr"]-dimension["cl"]
-    hauteur = dimension["cb"]-dimension["ct"]
-
-    mini =  bd.SW(c4d.Vector(0,hauteur,0)) + origine
-    maxi = bd.SW(c4d.Vector(largeur,0,0)) + origine
-
-    return  mini,maxi,largeur,hauteur
-
-_generated_images = set()
-
-
-def display_wms_swisstopo(layer):
-    
-    #le doc doit être en mètres
-    doc = c4d.documents.GetActiveDocument()
-
-    usdata = doc[c4d.DOCUMENT_DOCUNIT]
-    scale, unit = usdata.GetUnitScale()
-    if  unit!= c4d.DOCUMENT_UNIT_M:
-        rep = c4d.gui.QuestionDialog(DOC_NOT_IN_METERS_TXT)
-        if not rep : return
-        unit = c4d.DOCUMENT_UNIT_M
-        usdata.SetUnitScale(scale, unit)
-        doc[c4d.DOCUMENT_DOCUNIT] = usdata
-
-    #si le document n'est pas enregistré on enregistre
-    path_doc = doc.GetDocumentPath()
-
-    while not path_doc:
-        rep = c4d.gui.QuestionDialog(NOT_SAVED_TXT)
-        if not rep : return
-        c4d.documents.SaveDocument(doc, "", c4d.SAVEDOCUMENTFLAGS_DIALOGSALLOWED, c4d.FORMAT_C4DEXPORT)
-        c4d.CallCommand(12098) # Enregistrer le projet
-        path_doc = doc.GetDocumentPath()
-
-    dossier_img = os.path.join(path_doc,NOM_DOSSIER_IMG)
-
-    origine = doc[CONTAINER_ORIGIN]
-    if not origine:
-        doc[CONTAINER_ORIGIN] = O_DEFAUT
-        origine = doc[CONTAINER_ORIGIN]
-    bd = doc.GetActiveBaseDraw()
-    camera = bd.GetSceneCamera(doc)
-    if not camera[c4d.CAMERA_PROJECTION]== c4d.Ptop:
-        c4d.gui.MessageDialog("""Ne fonctionne qu'avec une caméra en projection "haut" """)
-        return
-    
-    #pour le format de la date regarder : https://docs.python.org/fr/3/library/datetime.html#strftime-strptime-behavior
-    dt = datetime.now()
-    suffixe_time = dt.strftime("%y%m%d_%H%M%S_%f")
-
-    fn = f'ortho{suffixe_time}.png'
-    fn_img = os.path.join(dossier_img,fn)
-    
-    if not os.path.isdir(dossier_img):
-            os.makedirs(dossier_img)
-    
-    mini,maxi,width_img,height_img = empriseVueHaut(bd,origine)
-    #print (mini.x,mini.z,maxi.x,maxi.z)
-    bbox = f'{mini.x},{mini.z},{maxi.x},{maxi.z}'
-    
-    url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
-    #print(url)
-    
-    
-    
-    try:
-        with urllib.request.urlopen(url, timeout=30) as response:
-            image = response.read()
-        if not image.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise ValueError("Le service WMS n’a pas renvoyé une image PNG.")
-        with open(fn_img, "xb") as output:
-            output.write(image)
-    except (OSError, ValueError) as error:
-        c4d.gui.MessageDialog(f"Image swisstopo indisponible : {error}")
-        return
-
-    old_fn = os.path.join(dossier_img, bd[c4d.BASEDRAW_DATA_PICTURE] or "")
-    _generated_images.add(fn_img)
-    bd[c4d.BASEDRAW_DATA_PICTURE] = fn
-    bd[c4d.BASEDRAW_DATA_SIZEX] = maxi.x-mini.x
-    bd[c4d.BASEDRAW_DATA_SIZEY] = maxi.z-mini.z
-
-
-    bd[c4d.BASEDRAW_DATA_OFFSETX] = (maxi.x+mini.x)/2 -origine.x
-    bd[c4d.BASEDRAW_DATA_OFFSETY] = (maxi.z+mini.z)/2-origine.z
-    #bd[c4d.BASEDRAW_DATA_SHOWPICTURE] = False
-
-    if old_fn in _generated_images and old_fn != fn_img:
-        try:
-            os.remove(old_fn)
-        except FileNotFoundError:
-            pass
-        except OSError as error:
-            print(f"Ancienne image conservée : {error}")
-        else:
-            _generated_images.discard(old_fn)
-    c4d.EventAdd(c4d.EVENT_FORCEREDRAW)
-    
-
-class DisplayOrtho(c4d.plugins.CommandData):
-    def Execute(self, doc) :
-        display_wms_swisstopo(LYR_ORTHO)
+class BackgroundDialog(c4d.gui.GeDialog):
+    def CreateLayout(self):
+        self.SetTitle("swisstopo affichage")
+        self.GroupBegin(0, c4d.BFH_CENTER, cols=1, rows=0)
+        self.GroupBegin(0, c4d.BFH_CENTER, cols=2, rows=1)
+        self.AddStaticText(0, c4d.BFH_LEFT | c4d.BFV_TOP, name="Affichage : ")
+        self.GroupBegin(0, c4d.BFH_LEFT, cols=1, rows=0)
+        for identifier, (name, _) in bg.LAYERS.items():
+            self.AddRadioButton(identifier, c4d.BFH_LEFT, name=name)
+        self.GroupEnd()
+        self.GroupEnd()
+        bg.add_transparency(self, align=c4d.BFH_CENTER)
+        self.GroupEnd()
         return True
 
-class DisplayCN10(c4d.plugins.CommandData):
-    def Execute(self, doc) :
-        display_wms_swisstopo(LYR_CN10)
-        return True
-class DisplayCN25(c4d.plugins.CommandData):
-    def Execute(self, doc) :
-        display_wms_swisstopo(LYR_CN25)
+    def InitValues(self):
+        self.SetTimer(200)
+        self.refresh()
         return True
 
-class DisplayCN50(c4d.plugins.CommandData):
-    def Execute(self, doc) :
-        display_wms_swisstopo(LYR_CN50)
+    def refresh(self):
+        doc = c4d.documents.GetActiveDocument()
+        bd = doc.GetActiveBaseDraw()
+        bg.refresh_transparency(self, doc, bd)
+        current = bg.selected(doc, bd)
+        for identifier in bg.LAYERS:
+            self.SetBool(identifier, identifier == current)
+
+    def Timer(self, msg):
+        bg.tick()
+        self.refresh()
+
+    def Command(self, identifier, msg):
+        if identifier in bg.TRANSPARENCY_CONTROLS:
+            bg.change_transparency(self, identifier)
+        elif identifier in bg.LAYERS:
+            bg.toggle(identifier)
+            self.refresh()
+        return True
+
+
+palette = BackgroundDialog()
+
+
+class DisplayCommand(c4d.plugins.CommandData):
+    def __init__(self, layer):
+        super().__init__()
+        self.layer = layer
+
+    def Execute(self, doc):
+        if bg.select(self.layer):
+            palette.Open(c4d.DLG_TYPE_ASYNC)
         return True
 
 def icone(nom) :
@@ -171,16 +67,16 @@ def icone(nom) :
     return bmp
     
 if __name__=='__main__':
-    c4d.plugins.RegisterCommandPlugin(id=ID_ORTHO, str="#$00"+"orthophoto",
-                                      info=0, help="", dat=DisplayOrtho(),
+    c4d.plugins.RegisterCommandPlugin(id=bg.ID_ORTHO, str="#$00"+"orthophoto",
+                                      info=0, help="", dat=DisplayCommand(bg.ID_ORTHO),
                                       icon=icone("ortho.png"))
-    c4d.plugins.RegisterCommandPlugin(id=ID_CN10, str="#$01"+"carte nationale 10'000",
-                                      info=0, help="", dat=DisplayCN10(),
+    c4d.plugins.RegisterCommandPlugin(id=bg.ID_CN10, str="#$01"+"carte nationale 10'000",
+                                      info=0, help="", dat=DisplayCommand(bg.ID_CN10),
                                       icon=icone("cn10.png"))
 
-    c4d.plugins.RegisterCommandPlugin(id=ID_CN25, str="#$02"+"carte nationale 25'000",
-                                      info=0, help="", dat=DisplayCN25(),
+    c4d.plugins.RegisterCommandPlugin(id=bg.ID_CN25, str="#$02"+"carte nationale 25'000",
+                                      info=0, help="", dat=DisplayCommand(bg.ID_CN25),
                                       icon=icone("cn25.png"))
-    c4d.plugins.RegisterCommandPlugin(id=ID_CN50, str="#$03"+"carte nationale 50'000",
-                                      info=0, help="", dat=DisplayCN50(),
+    c4d.plugins.RegisterCommandPlugin(id=bg.ID_CN50, str="#$03"+"carte nationale 50'000",
+                                      info=0, help="", dat=DisplayCommand(bg.ID_CN50),
                                       icon=icone("cn50.png"))

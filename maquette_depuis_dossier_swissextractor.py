@@ -484,7 +484,20 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None, ortho_wms_file=None, progress=None):
+    terrain_count = int(bool(mnt2m)) + int(bool(mnt50cm))
+    photo = bool(ortho_wms_file or ortho2m or ortho10cm)
+    total = (2 * (terrain_count + int(bool(mns))) + 2 * int(photo)
+             + int(bool(bati3D)) + int(bool(bati3D_v3))
+             + int(bool(fn_trees and terrain_count)) + int(bool(fn_forest and terrain_count)) + 1)
+    index = 0
+
+    def stage(action):
+        nonlocal index
+        index += 1
+        if progress:
+            progress(index, total, action)
+
     #on vérifie que le moteur de rendu soit bien "Standard" ->0
     #si ce n'est pas le cas on le met
     rdata = doc.GetActiveRenderData()
@@ -506,6 +519,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         fn_shp = shapefileFromSpline(spline_decoupe,doc,fn_shp,buffer = 2*taille_maille_mnt)
 
     if mnt2m:
+        stage("Préparation du MNT")
         pth_tuiles_mnt2m = os.path.join(pth,DIRNAME_MNT2M)
         if os.path.isdir(pth_tuiles_mnt2m):
             #VRT
@@ -521,6 +535,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 lst_asc.append(fn_mnt2m)
     
     if mnt50cm:
+        stage("Préparation du MNT")
         pth_tuiles_mnt50cm = os.path.join(pth,DIRNAME_MNT50CM)
         if os.path.isdir(pth_tuiles_mnt50cm):
             #VRT
@@ -536,6 +551,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 lst_asc.append(fn_mnt50cm)
     
     if mns:
+        stage("Préparation du MNS")
         taille_maille_mns = 0.5
         pth_tuiles_mns = os.path.join(pth,DIRNAME_MNS)
         if os.path.isdir(pth_tuiles_mns):
@@ -549,6 +565,17 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 extractFromBbox(fn_mns_vrt, fn_mns,xmin,ymin,xmax,ymax,taille_maille = taille_maille_mns ,form = 'AAIGrid',path_to_gdal_translate = None)
             if os.path.isfile(fn_mns):
                 lst_asc.append(fn_mns)
+
+    if photo:
+        stage("Préparation de l’orthophoto")
+    if ortho_wms_file:
+        texture_dir = tex_folder(doc, subfolder='swisstopo_images')
+        name = os.path.splitext(os.path.basename(ortho_wms_file))[0] + '.png'
+        texture = os.path.join(texture_dir, name)
+        translate = gdalBIN_OK(getPathToQGISbin(), exe='gdal_translate')
+        subprocess.run([translate, '-of', 'PNG', '-co', 'WORLDFILE=YES',
+                        ortho_wms_file, texture], check=True)
+        lst_imgs.append(texture)
 
     if ortho2m:
         pth_tuiles_ortho2m = os.path.join(pth,DIRNAME_ORTHO2M)
@@ -623,8 +650,6 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         #return
 
     #document en mètre
-    doc = c4d.documents.GetActiveDocument()
-
     usdata = doc[c4d.DOCUMENT_DOCUNIT]
     scale, unit = usdata.GetUnitScale()
     if  unit!= c4d.DOCUMENT_UNIT_M:
@@ -647,6 +672,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         mns = None
         cube_mnt = get_cube_from_bbox(xmin,ymin,xmax,ymax, origine)
         for fn_asc in lst_asc:
+            stage("Import du MNS" if DIRNAME_MNS in fn_asc else "Import du MNT")
             pred_mnt = mnt
             mnt = importMNT.terrainFromASC(fn_asc,doc)
             if spline_decoupe:
@@ -685,6 +711,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         #Swissbuidings3D
         buildings = None
         if bati3D:
+            stage("Import du Bâti3D")
             if spline_decoupe:
                 volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
                 buildings = swissbuildings3D.importSwissBuildings(pth, doc, volume_decoupe)
@@ -697,6 +724,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         #Swissbuildings3D v3
         buildings_v3 = None
         if bati3D_v3:
+            stage("Import du Bâti3D v3")
             if spline_decoupe:
                 volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
                 buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
@@ -715,6 +743,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         forest = None
         if mnt:
             if fn_trees:
+                stage("Placement des arbres")
                 point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
                 if point_object_trees_sommets:
                     trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
@@ -723,6 +752,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
 
 
             if fn_forest:
+                stage("Placement des forêts")
                 splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
                 if splines_forest :
                     forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
@@ -740,13 +770,15 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 obj.DelBit(c4d.BIT_ACTIVE)
 
 
+        if lst_imgs:
+            stage("Application de l’orthophoto")
         for img in lst_imgs :
             #raster.main(fn = img, fn_calage = None, alerte = True)
             fn_calage = img.replace(FORMAT_IMAGES,'.wld')
 
             #il faut que l'image et le fichier de calage existe'
             if os.path.isfile(img) and os.path.isfile(fn_calage):
-                gp = raster.Geopict(img,fn_calage,c4d.documents.GetActiveDocument())
+                gp = raster.Geopict(img,fn_calage,doc)
                 mat = gp.creerTexture(relatif=True)
                 mat = gp.mat
 
@@ -778,6 +810,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
 
 
         ##################################
+        stage("Finalisation de la maquette")
         #SOCLE MNT
         ##################################
         if mnt:
@@ -855,6 +888,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
     finally:
         doc.EndUndo()
     c4d.EventAdd()
+    return null_maquette, mnt
 
 # Execute main()
 if __name__=='__main__':

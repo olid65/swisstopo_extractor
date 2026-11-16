@@ -15,6 +15,9 @@ import subprocess
 #    return True
 
 sys.path.append(os.path.dirname(__file__))
+from utils.frame_maquette import frame_terrain
+from utils import ortho_wms
+from utils import swisstopo_background as bg
 from thread_download import ThreadDownload
 
 from maquette_depuis_dossier_swissextractor import (main as import_maquette, createVRTfromDir,
@@ -296,6 +299,7 @@ class DlgBbox(c4d.gui.GeDialog):
     E_MIN = 1017
     E_MAX = 1018
 
+    GEO_STATUS = 1038
     COMBO_LOCALISATION =1039
     BTON_ORTHO = 1040
     BTON_CN = 1041
@@ -317,8 +321,9 @@ class DlgBbox(c4d.gui.GeDialog):
     CHECKBOX_MNS = 1520
     CHECKBOX_BATI3D = 1502
     CHECKBOX_BATI3D_V3 = 1505
-    CHECKBOX_ORTHO2M = 1503
-    CHECKBOX_ORTHO10CM = 1504
+    ORTHO_ENABLED = 1521
+    ORTHO_RESOLUTION = 1503
+    ORTHO_DIMENSIONS = 1504
     CHECKBOX_TREES = 1506
     CHECKBOX_FOREST = 1507
 
@@ -354,8 +359,6 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_MNS = "MNS (modèle numérique de surface)"
     LABEL_BATI3D = "Bâtiments 3D"
     LABEL_BATI3D_V3 = "Bâtiments 3D v3 (print 3D)"
-    LABEL_ORTHO2M = "Orthophoto 2m"
-    LABEL_ORTHO10CM = "Orthophoto 10cm"
     LABEL_TREES = "Arbres isolés"
     LABEL_FOREST = "Cordons boisés et forêts"
 
@@ -415,8 +418,6 @@ class DlgBbox(c4d.gui.GeDialog):
     mnt50cm = False
     bati3D = False
     bati3D_v3 = False
-    ortho2m = False
-    ortho10cm = False
 
     fn_trees = None
     fn_forest = None
@@ -427,29 +428,36 @@ class DlgBbox(c4d.gui.GeDialog):
             with open(LOCATIONS_FILE, encoding = 'utf-8') as f:
                 self.dico_lieux = json.load(f)
             if self.dico_lieux:
-                self. lst_lieux =[k for k in self.dico_lieux.keys()]
+                self.lst_lieux = list(self.dico_lieux)
 
 
         self.SetTitle("swisstopo extractor")
         # MAIN GROUP
-        self.GroupBegin(500, flags=c4d.BFH_CENTER, cols=1, rows=6)
+        self.GroupBegin(500, flags=c4d.BFH_SCALEFIT, cols=1, rows=0)
         self.GroupBorderSpace(self.MARGIN*2, self.MARGIN*2, self.MARGIN*2, self.MARGIN*2)
 
         # GEOLOCALISATION
         self.AddStaticText(400, flags=c4d.BFH_LEFT, initw=0, inith=0, name=self.TITLE_GEOLOC, borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
 
-        self.GroupBegin(500, flags=c4d.BFH_CENTER, cols=3, rows=1)
+        self.AddStaticText(self.GEO_STATUS, flags=c4d.BFH_SCALEFIT, initw=500, name=' ')
+
+        self.GroupBegin(0, flags=c4d.BFH_CENTER, cols=1, rows=0)
         self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
 
-        self.AddComboBox(self.COMBO_LOCALISATION, flags=c4d.BFH_LEFT, initw=200, inith=0, specialalign=False, allowfiltering=True)
+        self.AddComboBox(self.COMBO_LOCALISATION, flags=c4d.BFH_CENTER, initw=200, inith=0, specialalign=False, allowfiltering=True)
         #
         self.AddChild(self.COMBO_LOCALISATION,0,'--choisissez un lieu--')
         if self.dico_lieux:
             for i,k in enumerate(self.dico_lieux.keys()):
                 self.AddChild(self.COMBO_LOCALISATION,i+1,k)
 
-        self.AddButton(self.BTON_ORTHO, flags=c4d.BFH_MASK, initw=0, inith=0, name="orthophoto")
-        self.AddButton(self.BTON_CN, flags=c4d.BFH_MASK, initw=0, inith=0, name="carte nationale")
+        self.GroupBegin(0, c4d.BFH_CENTER, cols=3, rows=1)
+        self.GroupBorderSpace(0, self.MARGIN, 0, 0)
+        self.AddStaticText(0, c4d.BFH_LEFT, name="Affichage : ")
+        self.AddRadioButton(self.BTON_ORTHO, flags=c4d.BFH_MASK, initw=0, inith=0, name="orthophoto")
+        self.AddRadioButton(self.BTON_CN, flags=c4d.BFH_MASK, initw=0, inith=0, name="carte nationale")
+        self.GroupEnd()
+        bg.add_transparency(self, align=c4d.BFH_CENTER)
         self.GroupEnd()
         self.AddSeparatorH( initw=150, flags=c4d.BFH_FIT)
 
@@ -531,9 +539,15 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D_V3)
         self.GroupEnd()
 
-        self.GroupBegin(607, flags=c4d.BFH_LEFT, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_ORTHO2M, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_ORTHO2M)
-        self.AddCheckbox(self.CHECKBOX_ORTHO10CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_ORTHO10CM)
+        self.GroupBegin(607, flags=c4d.BFH_SCALEFIT, cols=1, rows=2)
+        self.GroupBegin(0, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.AddCheckbox(self.ORTHO_ENABLED, c4d.BFH_LEFT, initw=150, inith=20, name="Orthophoto (cm/pixel)")
+        self.AddEditNumberArrows(self.ORTHO_RESOLUTION, c4d.BFH_LEFT, initw=65)
+        self.GroupEnd()
+        self.GroupBegin(0, flags=c4d.BFH_SCALEFIT, cols=1, rows=1)
+        self.GroupBorderSpace(19, 0, 0, 0)
+        self.AddStaticText(self.ORTHO_DIMENSIONS, c4d.BFH_SCALEFIT, name=" ", initw=440)
+        self.GroupEnd()
         self.GroupEnd()
 
         self.GroupBegin(608, flags=c4d.BFH_LEFT, cols=2, rows=1)
@@ -589,7 +603,10 @@ class DlgBbox(c4d.gui.GeDialog):
         return True
 
     def InitValues(self):
-        self.doc = c4d.documents.GetActiveDocument()
+        self.SetTimer(200)
+        self.refresh_background_choice()
+        self.display_doc = None
+        self.sync_document()
         self.SetMeter(self.N_MAX, 0.0)
         self.SetMeter(self.N_MIN, 0.0)
         self.SetMeter(self.E_MIN, 0.0)
@@ -599,7 +616,11 @@ class DlgBbox(c4d.gui.GeDialog):
         self.SetBool(self.CHECKBOX_BATI3D,True)
         self.SetBool(self.CHECKBOX_MNS,False)
         self.SetBool(self.CHECKBOX_BATI3D_V3,False)
-        self.SetBool(self.CHECKBOX_ORTHO2M,True)
+        self.SetBool(self.ORTHO_ENABLED, True)
+        self._ortho_preference = None
+        self._ortho_field_state = None
+        self._ortho_label = None
+        self.refresh_ortho_dimensions()
         self.SetBool(self.CHECKBOX_TREES,True)
         self.SetBool(self.CHECKBOX_FOREST,True)
         self.SetMeter(self.ID_TAILLE_MAILLE_MNT, 2.0)
@@ -627,6 +648,51 @@ class DlgBbox(c4d.gui.GeDialog):
             c4d.gui.MessageDialog(self.TXT_NO_PATH_TO_QGIS)
 
         return True
+
+    def sync_document(self, force=False):
+        doc = c4d.documents.GetActiveDocument()
+        if doc is None:
+            return
+        changed = self.display_doc is None or not self.display_doc.IsAlive() or doc != self.display_doc
+        if changed:
+            self.display_doc = doc
+            self.mini = self.maxi = self.spline_cut = None
+            for field in (self.N_MIN, self.N_MAX, self.E_MIN, self.E_MAX):
+                self.SetMeter(field, 0.0)
+            self.SetBool(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
+            self.Enable(self.ID_CHECKBOX_CUT_WITH_SPLINE, False)
+            for field in (self.ID_TXT_NBRE_POLYS_MNT, self.ID_TXT_NBRE_POLYS_MNS):
+                self.SetString(field, self.TXT_NO_SURFACE)
+
+        origin = doc[CONTAINER_ORIGIN]
+        coords = (origin.x, origin.z) if origin is not None else None
+        if not (changed or force) and coords == self.display_coords:
+            return
+        self.display_coords = coords
+        selection = 0
+        status = "Document non géoréférencé"
+        if coords is not None:
+            x, z = coords
+            status = f"Document géoréférencé · X {x:.2f}   Z {z:.2f}"
+            if self.lst_lieux:
+                def distance_squared(name):
+                    east, north = self.dico_lieux[name]
+                    return (east - x) ** 2 + (north - z) ** 2
+
+                nearest = min(self.lst_lieux, key=distance_squared)
+                east, north = self.dico_lieux[nearest]
+                if abs(east - x) < 0.005 and abs(north - z) < 0.005:
+                    selection = self.lst_lieux.index(nearest) + 1
+                    status = "Document géoréférencé"
+                else:
+                    status += f" · Lieu le plus proche : {nearest}"
+        self.SetString(self.GEO_STATUS, status)
+        self.SetInt32(self.COMBO_LOCALISATION, selection)
+
+    def CoreMessage(self, id, msg):
+        if id == c4d.EVMSG_CHANGE and getattr(self, "display_doc", None) is not None:
+            self.sync_document()
+        return super().CoreMessage(id, msg)
 
     def getBbox(self):
         mini = c4d.Vector()
@@ -721,23 +787,17 @@ class DlgBbox(c4d.gui.GeDialog):
                     #TODO remettre la camera au centre
                     c4d.EventAdd()
 
-        #Affichage OrthoPhoto
-        if id ==self.BTON_ORTHO:
-            if c4d.plugins.FindPlugin(ID_SWISSTOPO_ORTHO_DISPLAY):
-                #self.mode_draw = True
-                c4d.CallCommand(ID_SWISSTOPO_ORTHO_DISPLAY)
-            else:
-                c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_SWISSTOPO_DISPLAY)
+            self.sync_document(force=True)
 
+        if id in bg.TRANSPARENCY_CONTROLS:
+            bg.change_transparency(self, id)
+            return True
 
-        #Affichage CarteNationale
-        if id ==self.BTON_CN:
-            if c4d.plugins.FindPlugin(ID_SWISSTOPO_CN10_DISPLAY):
-                #self.mode_draw = True
-                c4d.CallCommand(ID_SWISSTOPO_CN10_DISPLAY)
-            else:
-                c4d.gui.MessageDialog(self.TXT_NO_PLUGIN_SWISSTOPO_DISPLAY)
-        
+        if id in (self.BTON_ORTHO, self.BTON_CN):
+            bg.toggle(bg.ID_ORTHO if id == self.BTON_ORTHO else bg.ID_CN10)
+            self.refresh_background_choice()
+            return True
+
         ##########################
         #EMPRISE
         ############################
@@ -917,16 +977,8 @@ class DlgBbox(c4d.gui.GeDialog):
         if id == self.CHECKBOX_BATI3D_V3:
             pass
 
-        if id == self.CHECKBOX_ORTHO2M:
-            # si le 50 cm est actif on le désactive
-            if self.GetBool(self.CHECKBOX_ORTHO10CM):
-                self.SetBool(self.CHECKBOX_ORTHO10CM,False)
-
-        if id == self.CHECKBOX_ORTHO10CM:
-            # si le 50 cm est actif on le désactive
-            if self.GetBool(self.CHECKBOX_ORTHO2M):
-                self.SetBool(self.CHECKBOX_ORTHO2M,False)
-
+        if id in (self.ORTHO_RESOLUTION, self.ORTHO_ENABLED):
+            self.refresh_ortho_dimensions(edited=id == self.ORTHO_RESOLUTION)
 
         #CHANGEMENT TAILLE DE LA MAILLE MNT
         if id==self.ID_TAILLE_MAILLE_MNT:
@@ -966,6 +1018,8 @@ class DlgBbox(c4d.gui.GeDialog):
         #TODO : désactiver le bouton si les coordonnées ne sont pas bonnes !
 
         if id == self.BTON_GET_URLS_DOWNLOAD:
+            if getattr(self, "monitor_download", False):
+                return True
             if getattr(self, "thread", None) and self.thread.IsRunning():
                 return True
             #Vérification que le fichier est enregistré
@@ -1009,66 +1063,35 @@ class DlgBbox(c4d.gui.GeDialog):
 
             if bbox:
                 xmin,ymin,xmax,ymax = bbox
-                #self.dic_downloads = {}
-                urls =[]
-
-                #MNT
-                if self.GetBool(self.CHECKBOX_MNT2M) or self.GetBool(self.CHECKBOX_MNT50CM):
-                    #on
-                    tri = '_2_'
-                    if self.GetBool(self.CHECKBOX_MNT50CM): tri = '_0.5_'
-
-                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['mnt']
-                    lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax) if tri in v]
-                    
-                    urls+= lst
-                    #for v in lst : print(v)
-                    #print('---------')
-                
-                #MNS
-                if self.GetBool(self.CHECKBOX_MNS):
-                    #Attention le mns est obligatoirement en 50cm !!!!
-                    #TODO : avertir s'il y a beaucoup de polygones
-                    
-                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['mns']
-                    lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax)]
-                    
-                    urls+= lst
-
-                #BATI3D
-                if self.GetBool(self.CHECKBOX_BATI3D):
-                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['bati3D']
-                    lst = get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax)
-
-                    #enlever les doublons, il y a deux versions bati3D 2018 et 2020 !
-                    lst = suppr_doublons_bati3D(lst)
-                    urls+= lst
-                    #for v in lst : print(v)
-                    #print('---------')
-                
-                #BATI3D V3
-                if self.GetBool(self.CHECKBOX_BATI3D_V3):
-                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['bati3D_v3']
-                    lst = get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax,gdb=True)
-                    urls+= lst
-                    #for v in lst : print(v)
-                    #print('---------')
-
-                #ORTHO
-                if self.GetBool(self.CHECKBOX_ORTHO2M) or self.GetBool(self.CHECKBOX_ORTHO10CM):
-                    tri = '_2_'
-                    if self.GetBool(self.CHECKBOX_ORTHO10CM):
-                        tri = '_0.1_'
-
-
-                    url = URL_STAC_SWISSTOPO_BASE+DIC_LAYERS['ortho']
-                    lst = [v for v in get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax) if tri in v]
-                    #suppression des doublons de feuille, on garde que la feuille la plus récente
-                    lst = suppr_doublons_list_ortho(lst)
-                    urls+= lst
-                    #for v in lst : print(v)
-                    #print('---------')
-
+                urls = []
+                self.download_layers = {}
+                self.download_issues = {}
+                self.requested_layers = set()
+                catalogs = (
+                    ("MNT", "mnt", self.GetBool(self.CHECKBOX_MNT2M) or self.GetBool(self.CHECKBOX_MNT50CM)),
+                    ("MNS", "mns", self.GetBool(self.CHECKBOX_MNS)),
+                    ("Bâti3D", "bati3D", self.GetBool(self.CHECKBOX_BATI3D)),
+                    ("Bâti3D v3", "bati3D_v3", self.GetBool(self.CHECKBOX_BATI3D_V3)),
+                )
+                self.download_mnt50 = self.GetBool(self.CHECKBOX_MNT50CM)
+                for layer, key, enabled in catalogs:
+                    if not enabled:
+                        continue
+                    self.requested_layers.add(layer)
+                    try:
+                        assets = get_list_from_STAC_swisstopo(
+                            URL_STAC_SWISSTOPO_BASE + DIC_LAYERS[key], *bbox,
+                            gdb=(key == "bati3D_v3"))
+                        if key == "mnt":
+                            resolution = "_0.5_" if self.download_mnt50 else "_2_"
+                            assets = [url for url in assets if resolution in url]
+                        elif key == "bati3D":
+                            assets = suppr_doublons_bati3D(assets)
+                        if not assets:
+                            raise ValueError("Aucun fichier disponible sur cette emprise.")
+                        urls.extend((layer, url) for url in assets)
+                    except Exception as error:
+                        self.download_issues[layer] = str(error)
 
                 #TELECHARGEMENT
                 
@@ -1090,7 +1113,18 @@ class DlgBbox(c4d.gui.GeDialog):
                 #list de tuple url,fn_dest pour envoyer dans le Thread
                 self.dwload_lst = []
 
-                for url in urls:
+                self.refresh_ortho_dimensions()
+                cm = self.GetInt32(self.ORTHO_RESOLUTION)
+                self.ortho_wms_file = None
+                if self.GetBool(self.ORTHO_ENABLED):
+                    self.requested_layers.add("Orthophoto")
+                    job = ortho_wms.prepare(pth, bbox, cm)
+                    self.download_layers[job[1]] = "Orthophoto"
+                    self.ortho_wms_file = job[1]
+                    if not os.path.isfile(job[1]):
+                        self.dwload_lst.append(job)
+
+                for layer, url in urls:
                     name_file = url.split('/')[-1]
                     name_dir = name_file.split('_')[0]
                     path_dir = os.path.join(pth,name_dir)
@@ -1111,6 +1145,7 @@ class DlgBbox(c4d.gui.GeDialog):
                     fn = os.path.join(path_dir,name_file)
                     name,ext = os.path.splitext(fn)
 
+                    self.download_layers[fn] = layer
                     self.dirs.append(path_dir)
 
                     #si le fichier existe on ne le télécharge pas
@@ -1148,6 +1183,8 @@ class DlgBbox(c4d.gui.GeDialog):
                     
                     self.dwload_lst.append((url,fn))
                     self.fn_trees = fn
+                    self.download_layers[fn] = "Arbres"
+                    self.requested_layers.add("Arbres")
 
                 #FORETS
                 if self.GetBool(self.CHECKBOX_FOREST):
@@ -1161,6 +1198,8 @@ class DlgBbox(c4d.gui.GeDialog):
                     
                     self.dwload_lst.append((url,fn))
                     self.fn_forest = fn
+                    self.download_layers[fn] = "Forêts"
+                    self.requested_layers.add("Forêts")
 
 
                 #si la liste est vide on quitte et on avertit
@@ -1171,6 +1210,7 @@ class DlgBbox(c4d.gui.GeDialog):
                 #stockage des infos nécessaires pour la génération de la maquette
                 #dans le Timer
                 self.doc = doc
+                self.download_spline = self.spline_cut
                 self.pth_swisstopo_data = pth
                 self.bbox = bbox
                 #variable pour eviter de lancer la génération de la maquette plusieurs fois
@@ -1181,18 +1221,57 @@ class DlgBbox(c4d.gui.GeDialog):
                 self.thread.Start()
 
                 #lancement du timer pour voir l'avancement du téléchargement
-                self.SetTimer(500)
+                self.monitor_download = True
                 return True               
 
         return True
 
+    def refresh_background_choice(self):
+        doc = c4d.documents.GetActiveDocument()
+        bd = doc.GetActiveBaseDraw()
+        bg.refresh_transparency(self, doc, bd)
+        current = bg.selected(doc, bd)
+        self.SetBool(self.BTON_ORTHO, current == bg.ID_ORTHO)
+        self.SetBool(self.BTON_CN, current == bg.ID_CN10)
+
+    def refresh_ortho_dimensions(self, edited=False):
+        bbox = self.getDialogBbox()
+        valid = bbox and bbox[2] > bbox[0] and bbox[3] > bbox[1]
+        minimum = ortho_wms.grid(bbox, 0)[0] if valid else ortho_wms.MIN_CM
+        if edited:
+            entered = self.GetInt32(self.ORTHO_RESOLUTION)
+            self._ortho_preference = entered if entered > minimum else None
+        cm = max(minimum, self._ortho_preference or minimum)
+        enabled = self.GetBool(self.ORTHO_ENABLED)
+        state = (minimum, cm, enabled)
+        if edited or state != self._ortho_field_state:
+            self.SetInt32(self.ORTHO_RESOLUTION, cm, minimum, 2147483647, 1)
+            self.Enable(self.ORTHO_RESOLUTION, enabled)
+            self._ortho_field_state = state
+        if not enabled:
+            label = "Sans texture"
+        elif valid:
+            _, width, height = ortho_wms.grid(bbox, cm)
+            label = f"{width} × {height} pixels · minimum {minimum} cm/pixel"
+        else:
+            label = "10 cm/pixel minimum · 10 000 pixels par côté"
+        if label != getattr(self, "_ortho_label", None):
+            self.SetString(self.ORTHO_DIMENSIONS, label)
+            self._ortho_label = label
+
     def Timer(self,msg):
+        self.refresh_ortho_dimensions()
+        bg.tick()
+        self.refresh_background_choice()
+        if not getattr(self, "monitor_download", False):
+            return
         try:
             self.update_download_status()
         except Exception as error:
-            self.SetTimer(0)
+            self.monitor_download = False
             import traceback
             traceback.print_exc()
+            self.SetString(self.ID_TXT_DOWNLOAD_STATUS, "Import interrompu")
             c4d.gui.MessageDialog(f"Impossible de terminer la maquette : {error}")
 
     def update_download_status(self):
@@ -1201,13 +1280,28 @@ class DlgBbox(c4d.gui.GeDialog):
 
         #si le thread est terminé on arrête le Timer et on lance la création des vrt
         if not self.thread.IsRunning():
-            self.SetTimer(0)
-            if self.thread.errors:
-                self.gen = False
-                self.SetString(self.ID_TXT_DOWNLOAD_STATUS, "Téléchargement incomplet")
-                c4d.gui.MessageDialog("\n".join(self.thread.errors))
+            self.monitor_download = False
+            issues = self.download_issues.copy()
+            for path, detail in self.thread.errors:
+                layer = self.download_layers[path]
+                issues.setdefault(layer, detail)
+            available = self.requested_layers.difference(issues)
+            if "MNT" not in available:
+                for layer in ("Arbres", "Forêts"):
+                    if layer in available:
+                        available.remove(layer)
+                        issues[layer] = "Le placement nécessite un MNT."
+            self.SetString(self.ID_TXT_DOWNLOAD_STATUS,
+                           "Téléchargement partiel" if issues else "Téléchargement terminé")
+            details = "\n".join(f"{name} : {detail}" for name, detail in issues.items())
+            if not available:
+                c4d.gui.MessageDialog("Aucune couche à importer.\n" + details)
                 return
-            self.SetString(self.ID_TXT_DOWNLOAD_STATUS, "Téléchargement terminé")
+            question = self.TXT_IMPORT_MODEL
+            if issues:
+                question = ("Couches écartées :\n" + details +
+                            "\n\nGénérer la maquette avec les couches disponibles ?\n" +
+                            ", ".join(sorted(available)))
             self.qgispath = getPathToQGISbin()
 
             if not self.qgispath:
@@ -1215,7 +1309,7 @@ class DlgBbox(c4d.gui.GeDialog):
                 return 
             
             if self.gen:
-                if c4d.gui.QuestionDialog(self.TXT_IMPORT_MODEL):
+                if c4d.gui.QuestionDialog(question):
                     #pour éviter de lancer plusieurs fois la génération de la maquette
                     self.gen = False
                     ###################################################################
@@ -1231,13 +1325,11 @@ class DlgBbox(c4d.gui.GeDialog):
                     ymin -= self.taille_maille_mnt
                     #ymax += self.taille_maille_mnt
 
-                    mnt2m = self.GetBool(self.CHECKBOX_MNT2M)
-                    mnt50cm = self.GetBool(self.CHECKBOX_MNT50CM)
-                    mns = self.GetBool(self.CHECKBOX_MNS)
-                    bati3D = self.GetBool(self.CHECKBOX_BATI3D)
-                    bati3D_v3 = self.GetBool(self.CHECKBOX_BATI3D_V3)
-                    ortho2m = self.GetBool(self.CHECKBOX_ORTHO2M)
-                    ortho10cm = self.GetBool(self.CHECKBOX_ORTHO10CM)
+                    mnt2m = "MNT" in available and not self.download_mnt50
+                    mnt50cm = "MNT" in available and self.download_mnt50
+                    mns = "MNS" in available
+                    bati3D = "Bâti3D" in available
+                    bati3D_v3 = "Bâti3D v3" in available
 
                     fn_doc_arbres_sources =  os.path.join(os.path.dirname(__file__),'data','__arbres_sources__.c4d')
                     arbres_sources = None
@@ -1248,7 +1340,32 @@ class DlgBbox(c4d.gui.GeDialog):
                             arbres_sources = doc_arbres_sources.SearchObject('sources_vegetation')
 
 
-                    import_maquette(self.doc,origine,self.pth_swisstopo_data,xmin,ymin,xmax,ymax, self.taille_maille_mnt,mnt2m,mnt50cm,mns,self.taille_maille_mns,bati3D,bati3D_v3,ortho2m,ortho10cm,self.fn_trees, self.fn_forest,arbres_sources = arbres_sources,spline_decoupe = self.spline_cut)
+                    def progress(index, total, action):
+                        text = f"{index}/{total} · {action}"
+                        self.SetString(self.ID_TXT_DOWNLOAD_STATUS, text)
+                        c4d.gui.StatusSetText(text)
+                        c4d.gui.StatusSetBar(round(100 * (index-1) / total))
+
+                    try:
+                        imported = import_maquette(
+                            self.doc, origine, self.pth_swisstopo_data, xmin, ymin, xmax, ymax,
+                            self.taille_maille_mnt, mnt2m, mnt50cm, mns, self.taille_maille_mns,
+                            bati3D, bati3D_v3, False, False,
+                            self.fn_trees if "Arbres" in available else None,
+                            self.fn_forest if "Forêts" in available else None,
+                            arbres_sources=arbres_sources, spline_decoupe=self.download_spline,
+                            ortho_wms_file=self.ortho_wms_file if "Orthophoto" in available else None,
+                            progress=progress)
+                        if imported:
+                            c4d.gui.StatusSetBar(100)
+                        self.SetString(self.ID_TXT_DOWNLOAD_STATUS,
+                                       "Import terminé" if imported else "Import interrompu")
+                    finally:
+                        c4d.gui.StatusClear()
+                    terrain = imported[1] if imported else None
+                    if isinstance(terrain, c4d.PolygonObject) and terrain.GetPolygonCount():
+                        if c4d.gui.QuestionDialog("Cadrer le terrain dans la vue en perspective ?"):
+                            frame_terrain(self.doc, terrain)
                     c4d.EventAdd()
 
             

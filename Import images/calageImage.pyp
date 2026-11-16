@@ -284,113 +284,122 @@ class CalageImage(c4d.plugins.ToolData):
     def MouseInput(self, doc, data, bd, win, msg):
 
         doc.StartUndo()
-        op = doc.GetActiveObject()
-        if not op : return False
+        try:
+            op = doc.GetActiveObject()
+            if not op : return False
 
-        #si l'objet est paramétrique il faut le rendre éditable
-        if not op.CheckType(c4d.Opoint) :
-            if c4d.gui.QuestionDialog("L'objet sélectionné va être édité, voulez-vous continuer ?"):
-                op = make_editable(op,doc)
-                c4d.EventAdd()
+            #si l'objet est paramétrique il faut le rendre éditable
+            if not op.CheckType(c4d.Opoint) :
+                if c4d.gui.QuestionDialog("L'objet sélectionné va être édité, voulez-vous continuer ?"):
+                    op = make_editable(op,doc)
+                    c4d.EventAdd()
 
-            return True
-
-
-        x = msg[c4d.BFM_INPUT_X]
-        y = msg[c4d.BFM_INPUT_Y]
-
-        device = 0
-        if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSELEFT:
-            device = c4d.KEY_MLEFT
-
-        if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSERIGHT:
-             device = c4d.KEY_MRIGHT
-        ##########################################################################################
-        #Récupération des données souris
-
-        dx = 0.0
-        dy = 0.0
-
-        win.MouseDragStart(button=device, mx=int(x), my=int(y),
-                                 flags=c4d.MOUSEDRAGFLAGS_DONTHIDEMOUSE)
-        result, tx, ty, channel = win.MouseDrag()
-
-        mg = op.GetMg()
-        pos_dprt = mg.off
-        delta = pos_dprt - bd.SW(c4d.Vector(x,y,0))
-
-        doc.AddUndo(c4d.UNDOTYPE_CHANGE,op)
-
-        if self.dlg:
-            mode = self.dlg.parameters['mode']
-        else:
-            mode = 1
-
-        if mode == self.dlg.MODE_ROTATION_SCALE:
-            change_rot = True
-            change_scale = True
-        elif mode == self.dlg.MODE_ROTATION:
-            change_rot = True
-            change_scale = False
-        if mode == self.dlg.MODE_SCALE:
-            change_rot = False
-            change_scale = True
-
-        if self._phase2:
-            #rotation de l'axe lors du second drag
-            pos_dprt2 = bd.SW(c4d.Vector(x,y,0))
-            matrix = getMatrix_v2_vertical(mg.off,pos_dprt2, mg.off)
-            move_axis_global(op, matrix)
-            dist_origin = c4d.Vector.GetDistance(pos_dprt2,matrix.off)
+                return True
 
 
-        while result==c4d.MOUSEDRAGRESULT_CONTINUE:
-            dx += tx
-            dy += ty
-            result, tx, ty, channel = win.MouseDrag()
-            pt = bd.SW(c4d.Vector(x+dx,y+dy,0))
-            pos = pt +delta
+            x = msg[c4d.BFM_INPUT_X]
+            y = msg[c4d.BFM_INPUT_Y]
 
-            if self._phase2:
-                dist = c4d.Vector.GetDistance(pt,matrix.off)
-                if change_scale:
-                    scale = c4d.Vector(dist/dist_origin)
+            device = 0
+            if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSELEFT:
+                device = c4d.KEY_MLEFT
+
+            if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSERIGHT:
+                 device = c4d.KEY_MRIGHT
+            ##########################################################################################
+            #Récupération des données souris
+
+            dx = 0.0
+            dy = 0.0
+
+            win.MouseDragStart(button=device, mx=int(x), my=int(y),
+                                     flags=c4d.MOUSEDRAGFLAGS_DONTHIDEMOUSE)
+            try:
+                result, tx, ty, channel = win.MouseDrag()
+
+                mg = op.GetMg()
+                pos_dprt = mg.off
+                delta = pos_dprt - bd.SW(c4d.Vector(x,y,0))
+
+                doc.AddUndo(c4d.UNDOTYPE_CHANGE,op)
+
+                if self.dlg:
+                    mode = self.dlg.parameters['mode']
                 else:
-                    scale = c4d.Vector(1)
+                    mode = 1
 
-                if change_rot :
-                    new_m = getMatrix_v2_vertical(matrix.off, pt, matrix.off, scale)
-                else:
-                    new_m = c4d.Matrix()
-                    new_m.off = matrix.off
-                    new_m.v1 = matrix.v1*scale.x
-                    new_m.v2 = matrix.v2*scale.x
-                    new_m.v3 = matrix.v3*scale.x
+                if mode == SettingsDialog.MODE_ROTATION_SCALE:
+                    change_rot = True
+                    change_scale = True
+                elif mode == SettingsDialog.MODE_ROTATION:
+                    change_rot = True
+                    change_scale = False
+                if mode == SettingsDialog.MODE_SCALE:
+                    change_rot = False
+                    change_scale = True
 
-                op.SetMg(new_m)
-                
-            else :
-                mg.off = pos
-                op.SetMg(mg)
-            
+                if self._phase2:
+                    #rotation de l'axe lors du second drag
+                    pos_dprt2 = bd.SW(c4d.Vector(x,y,0))
+                    if (pos_dprt2 - mg.off).GetLength() < 1e-9:
+                        return False
+                    matrix = getMatrix_v2_vertical(mg.off,pos_dprt2, mg.off)
+                    move_axis_global(op, matrix)
+                    dist_origin = c4d.Vector.GetDistance(pos_dprt2,matrix.off)
+
+
+                pt = bd.SW(c4d.Vector(x, y, 0))
+                while result==c4d.MOUSEDRAGRESULT_CONTINUE:
+                    dx += tx
+                    dy += ty
+                    result, tx, ty, channel = win.MouseDrag()
+                    pt = bd.SW(c4d.Vector(x+dx,y+dy,0))
+                    pos = pt +delta
+
+                    if self._phase2:
+                        dist = c4d.Vector.GetDistance(pt,matrix.off)
+                        if change_scale:
+                            scale = c4d.Vector(dist/dist_origin)
+                        else:
+                            scale = c4d.Vector(1)
+
+                        if change_rot :
+                            new_m = getMatrix_v2_vertical(matrix.off, pt, matrix.off, scale)
+                        else:
+                            new_m = c4d.Matrix()
+                            new_m.off = matrix.off
+                            new_m.v1 = matrix.v1*scale.x
+                            new_m.v2 = matrix.v2*scale.x
+                            new_m.v3 = matrix.v3*scale.x
+
+                        op.SetMg(new_m)
+
+                    else :
+                        mg.off = pos
+                        op.SetMg(mg)
+
+                    c4d.DrawViews(c4d.DRAWFLAGS_FORCEFULLREDRAW,bd)
+                    c4d.EventAdd()
+            finally:
+                win.MouseDragEnd()
+
+            if result == c4d.MOUSEDRAGRESULT_FINISHED:
+                # si on est au bout du premier drag on modifie l'axe
+                if not self._phase2:
+                    mg.off = pt
+                    move_axis_global(op, mg)
+                self._phase2 = not self._phase2
+
+            #si la touche SHIFT ou CTRL ne sont pas enfoncee on deselectionne tout
+            if not (msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QSHIFT  or  msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QCTRL): pass
+
             c4d.DrawViews(c4d.DRAWFLAGS_FORCEFULLREDRAW,bd)
             c4d.EventAdd()
 
-        if result == c4d.MOUSEDRAGRESULT_FINISHED:
-            # si on est au bout du premier drag on modifie l'axe
-            if not self._phase2:
-                mg.off = pt
-                move_axis_global(op, mg)
-            self._phase2 = not self._phase2
 
-        #si la touche SHIFT ou CTRL ne sont pas enfoncee on deselectionne tout
-        if not (msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QSHIFT  or  msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QCTRL): pass
-
-        c4d.DrawViews(c4d.DRAWFLAGS_FORCEFULLREDRAW,bd)
-        c4d.EventAdd()
-        
-
-        return True
+            return True
+        finally:
+            doc.EndUndo()
 
     def AllocSubDialog(self, bc):
         """

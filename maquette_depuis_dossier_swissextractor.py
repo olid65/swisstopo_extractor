@@ -322,8 +322,7 @@ def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
     #fichier texte avec listes images tif
     lst_img_txt = dirImgToTextFile(path_tifs, ext = '.tif')
     if lst_img_txt:
-        req = f'"{path_to_gdalbuildvrt}" -input_file_list "{lst_img_txt}" "{fn_vrt}"'
-        output = subprocess.check_output(req,shell=True)
+        subprocess.run([path_to_gdalbuildvrt, "-input_file_list", lst_img_txt, fn_vrt], check=True)
         #on supprime le fichier txt
         os.remove(lst_img_txt)
         if os.path.isfile(fn_vrt):
@@ -349,20 +348,15 @@ def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,taille_maille = 
     if not path_to_gdal_translate:
         c4d.gui.MessageDialog("L'extraction est impossible, gdal_translate non trouvé")
         return False
-    f = ''
-    #ATTENTION normalement gdal_translate met automatiquement le bon format en fonction de l'extension
-    #mais avec le .asc il met appremment quelques fois le format Arc/Info Binary Grid (AIG) au lieu du AAIGrid !!!
-    # (constaté sur PC)
-    if form :
-        f = f'-of {form}'
-    
-    if taille_maille :
-        req = f'"{path_to_gdal_translate}" {f} {wld} -tr {taille_maille} {taille_maille} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
-    else:
-        req = f'"{path_to_gdal_translate}" {f} {wld} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
-
-    
-    output = subprocess.check_output(req,shell=True)
+    args = [path_to_gdal_translate]
+    if form:
+        args.extend(["-of", form])
+    if wld:
+        args.extend(["-co", "worldfile=yes"])
+    if taille_maille:
+        args.extend(["-tr", str(taille_maille), str(taille_maille)])
+    args.extend(["-projwin", *map(str, (xmin, ymax, xmax, ymin)), raster_srce, raster_dst])
+    subprocess.run(args, check=True)
     if os.path.isfile(raster_dst):
         return raster_dst
 
@@ -379,8 +373,9 @@ def extractFromSpline(fn_shp,raster_srce, raster_dst,cellsize, form = 'AAIGrid',
         return False
     
     layer_name = os.path.basename(fn_shp)[:-4]
-    req = f'"{path_to_gdalwarp}" -overwrite -of {form} -cutline "{fn_shp}" -tr {cellsize} {cellsize} -cl "{layer_name}" -crop_to_cutline "{raster_srce}" "{raster_dst}"'
-    output = subprocess.check_output(req,shell=True)
+    subprocess.run([path_to_gdalwarp, "-overwrite", "-of", form, "-cutline", fn_shp,
+                    "-tr", str(cellsize), str(cellsize), "-cl", layer_name,
+                    "-crop_to_cutline", raster_srce, raster_dst], check=True)
     
     if os.path.isfile(raster_dst):
         return raster_dst
@@ -404,12 +399,10 @@ def dirImgToTextFile(path_dir, ext = '.tif'):
 #CIEL PHYSIQUE ET GI
 
 def lv95towgs84(x,y):
-    url = f'http://geodesy.geo.admin.ch/reframe/lv95towgs84?easting={x}&northing={y}&format=json'
+    url = f'https://geodesy.geo.admin.ch/reframe/lv95towgs84?easting={x}&northing={y}&format=json'
 
-    f = urllib.request.urlopen(url)
-    #TODO : vérifier que cela à bien fonctionnéé (code =200)
-    txt = f.read().decode('utf-8')
-    json_res = json.loads(txt)
+    with urllib.request.urlopen(url, timeout=30) as response:
+        json_res = json.load(response)
 
     return float(json_res['easting']),float(json_res['northing'])
 
@@ -642,225 +635,225 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         doc[c4d.DOCUMENT_DOCUNIT] = usdata
 
     doc.StartUndo()
-
-    null_maquette = c4d.BaseObject(c4d.Onull)
-    null_maquette.SetName('Maquette swisstopo')
+    try:
+        null_maquette = c4d.BaseObject(c4d.Onull)
+        null_maquette.SetName('Maquette swisstopo')
     
 
-    alt_min = 0
+        alt_min = 0
 
-    #Modèle(s) de terrain et de surface
-    mnt = None
-    mns = None
-    cube_mnt = get_cube_from_bbox(xmin,ymin,xmax,ymax, origine)
-    for fn_asc in lst_asc:
-        pred_mnt = mnt
-        mnt = importMNT.terrainFromASC(fn_asc,doc)
-        if spline_decoupe:
-            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-            if volume_decoupe:
-                mnt_decoupe = utils.cut_obj_from_spline.decoupeMNTfromVolume(mnt,volume_decoupe)
-                if mnt_decoupe :
-                    mnt.Remove()
-                    mnt = mnt_decoupe
+        #Modèle(s) de terrain et de surface
+        mnt = None
+        mns = None
+        cube_mnt = get_cube_from_bbox(xmin,ymin,xmax,ymax, origine)
+        for fn_asc in lst_asc:
+            pred_mnt = mnt
+            mnt = importMNT.terrainFromASC(fn_asc,doc)
+            if spline_decoupe:
+                volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+                if volume_decoupe:
+                    mnt_decoupe = utils.cut_obj_from_spline.decoupeMNTfromVolume(mnt,volume_decoupe)
+                    if mnt_decoupe :
+                        mnt.Remove()
+                        mnt = mnt_decoupe
 
-        if mnt:
-            #alt_min = socle(mnt,doc)
-            mnt.InsertUnderLast(null_maquette)
+            if mnt:
+                #alt_min = socle(mnt,doc)
+                mnt.InsertUnderLast(null_maquette)
 
-            #si c'est un mns il ne faut pas le prendre comme mnt
-            #sinon les arbres ne seront pas justes (calcul de la base sur mnt)
-            if DIRNAME_MNS in fn_asc:
-                mns = mnt
-                mnt = pred_mnt
-                #on rend le mns invisible à la vue et au rendu
-                mns[c4d.ID_BASEOBJECT_VISIBILITY_EDITOR] = c4d.OBJECT_OFF
-                mns[c4d.ID_BASEOBJECT_VISIBILITY_RENDER] = c4d.OBJECT_OFF
+                #si c'est un mns il ne faut pas le prendre comme mnt
+                #sinon les arbres ne seront pas justes (calcul de la base sur mnt)
+                if DIRNAME_MNS in fn_asc:
+                    mns = mnt
+                    mnt = pred_mnt
+                    #on rend le mns invisible à la vue et au rendu
+                    mns[c4d.ID_BASEOBJECT_VISIBILITY_EDITOR] = c4d.OBJECT_OFF
+                    mns[c4d.ID_BASEOBJECT_VISIBILITY_RENDER] = c4d.OBJECT_OFF
+                else:
+                    #CUBE pour la découpe des batiments
+                    cube_mnt = get_cube_from_obj(mnt)
+                    pos = cube_mnt.GetRelPos()
+                    #lorsque l'on génére le mnt la position se fait par le geotag
+                    #et le déplacement se fait après, du coup c'est le moyen pas très élégant
+                    #que j'ai trouvé pour que le cube soit au bon endroit'
+                    geotag = mnt.GetTag(GEOTAG_ID)
+                    if geotag:
+                        pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
+                        cube_mnt.SetRelPos(pos)
+
+
+        #Swissbuidings3D
+        buildings = None
+        if bati3D:
+            if spline_decoupe:
+                volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+                buildings = swissbuildings3D.importSwissBuildings(pth, doc, volume_decoupe)
             else:
-                #CUBE pour la découpe des batiments
-                cube_mnt = get_cube_from_obj(mnt)
-                pos = cube_mnt.GetRelPos()
-                #lorsque l'on génére le mnt la position se fait par le geotag
-                #et le déplacement se fait après, du coup c'est le moyen pas très élégant
-                #que j'ai trouvé pour que le cube soit au bon endroit'
-                geotag = mnt.GetTag(GEOTAG_ID)
-                if geotag:
-                    pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
-                    cube_mnt.SetRelPos(pos)
-
-
-    #Swissbuidings3D
-    buildings = None
-    if bati3D:
-        if spline_decoupe:
-            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-            buildings = swissbuildings3D.importSwissBuildings(pth, doc, volume_decoupe)
-        else:
-            buildings = swissbuildings3D.importSwissBuildings(pth, doc, cube_mnt)
+                buildings = swissbuildings3D.importSwissBuildings(pth, doc, cube_mnt)
         
-        if buildings :
-            buildings.InsertUnderLast(null_maquette)
+            if buildings :
+                buildings.InsertUnderLast(null_maquette)
     
-    #Swissbuildings3D v3
-    buildings_v3 = None
-    if bati3D_v3:
-        if spline_decoupe:
-            volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
-        else:
-            buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
+        #Swissbuildings3D v3
+        buildings_v3 = None
+        if bati3D_v3:
+            if spline_decoupe:
+                volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
+                buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
+            else:
+                buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
         
-        if buildings_v3 :
-            buildings_v3.InsertUnderLast(null_maquette)
+            if buildings_v3 :
+                buildings_v3.InsertUnderLast(null_maquette)
 
-    ###################################
-    # ARBRES
-    ###################################
+        ###################################
+        # ARBRES
+        ###################################
 
-    # il faut un mnt (TODO générer les arbres au sol si on n'a pas de MNT ???)
-    trees = None
-    forest = None
-    if mnt:
-        if fn_trees:
-            point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
-            if point_object_trees_sommets:
-                trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
+        # il faut un mnt (TODO générer les arbres au sol si on n'a pas de MNT ???)
+        trees = None
+        forest = None
+        if mnt:
+            if fn_trees:
+                point_object_trees_sommets = utils.geojson_trees.pointObjectFromGeojson(fn_trees,origine, color = c4d.Vector4d(0.0, 1.0, 0.0, 1.0))
+                if point_object_trees_sommets:
+                    trees = utils.mograph_trees.mograph_system_trees(point_object_trees_sommets, mnt, arbres_sources,doc)
                 
-                trees.InsertUnderLast(null_maquette)
+                    trees.InsertUnderLast(null_maquette)
 
 
-        if fn_forest:
-            splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
-            if splines_forest :
-                forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
+            if fn_forest:
+                splines_forest = utils.geojson_trees.splinesFromGeojson(fn_forest,origine)
+                if splines_forest :
+                    forest = utils.mograph_trees.mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.02)
 
-                forest.InsertUnderLast(null_maquette)
+                    forest.InsertUnderLast(null_maquette)
 
-    #IMAGES
-    #si on a un mnt on le sélectionne pour que l'image se plaque dessus'
-    # TODO si on n'a pas de MNT -> créer un plan à la taille de l'image ?
-    if mnt:
-        doc.SetActiveObject(mnt)
-    #sinon on déselectionne tout
-    else:
-        for obj in doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_NONE):
-            obj.DelBit(c4d.BIT_ACTIVE)
+        #IMAGES
+        #si on a un mnt on le sélectionne pour que l'image se plaque dessus'
+        # TODO si on n'a pas de MNT -> créer un plan à la taille de l'image ?
+        if mnt:
+            doc.SetActiveObject(mnt)
+        #sinon on déselectionne tout
+        else:
+            for obj in doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_NONE):
+                obj.DelBit(c4d.BIT_ACTIVE)
 
 
-    for img in lst_imgs :
-        #raster.main(fn = img, fn_calage = None, alerte = True)
-        fn_calage = img.replace(FORMAT_IMAGES,'.wld')
+        for img in lst_imgs :
+            #raster.main(fn = img, fn_calage = None, alerte = True)
+            fn_calage = img.replace(FORMAT_IMAGES,'.wld')
 
-        #il faut que l'image et le fichier de calage existe'
-        if os.path.isfile(img) and os.path.isfile(fn_calage):
-            gp = raster.Geopict(img,fn_calage,c4d.documents.GetActiveDocument())
-            mat = gp.creerTexture(relatif=True)
-            mat = gp.mat
+            #il faut que l'image et le fichier de calage existe'
+            if os.path.isfile(img) and os.path.isfile(fn_calage):
+                gp = raster.Geopict(img,fn_calage,c4d.documents.GetActiveDocument())
+                mat = gp.creerTexture(relatif=True)
+                mat = gp.mat
 
-        #on contraint les tags materiau au mnt
-        if mnt :
-            #on regarde si il a un geotag
-            if not mnt.GetTag(1026472,0):
-                tg = gp.creerGeoTag(mnt)
-            tag = gp.creerTagTex(mnt, displayTag = False)
-            tag[c4d.TEXTURETAG_RESTRICTION] = NAME_SELECTION_MNT
+            #on contraint les tags materiau au mnt
+            if mnt :
+                #on regarde si il a un geotag
+                if not mnt.GetTag(1026472,0):
+                    tg = gp.creerGeoTag(mnt)
+                tag = gp.creerTagTex(mnt, displayTag = False)
+                tag[c4d.TEXTURETAG_RESTRICTION] = NAME_SELECTION_MNT
 
-        if buildings:
-            #on regarde si il a un geotag
-            if not buildings.GetTag(1026472,0):
-                tg = gp.creerGeoTag(buildings)
-            tag = gp.creerTagTex(buildings, displayTag = False)
-            tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
+            if buildings:
+                #on regarde si il a un geotag
+                if not buildings.GetTag(1026472,0):
+                    tg = gp.creerGeoTag(buildings)
+                tag = gp.creerTagTex(buildings, displayTag = False)
+                tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
         
-        if trees:
-            #on regarde si il a un geotag
-            if not trees.GetTag(1026472,0):
-                tg = gp.creerGeoTag(trees)
-            tag = gp.creerTagTex(trees, displayTag = False)
-        if forest :
-            #on regarde si il a un geotag
-            if not forest.GetTag(1026472,0):
-                tg = gp.creerGeoTag(forest)
-            tag = gp.creerTagTex(forest, displayTag = False)
+            if trees:
+                #on regarde si il a un geotag
+                if not trees.GetTag(1026472,0):
+                    tg = gp.creerGeoTag(trees)
+                tag = gp.creerTagTex(trees, displayTag = False)
+            if forest :
+                #on regarde si il a un geotag
+                if not forest.GetTag(1026472,0):
+                    tg = gp.creerGeoTag(forest)
+                tag = gp.creerTagTex(forest, displayTag = False)
 
 
-    ##################################
-    #SOCLE MNT
-    ##################################
-    if mnt:
-        alt_min = socle(mnt,doc)
-        #doc.InsertObject(mnt)
-        #doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mnt)
+        ##################################
+        #SOCLE MNT
+        ##################################
+        if mnt:
+            alt_min = socle(mnt,doc)
+            #doc.InsertObject(mnt)
+            #doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mnt)
 
 
-        #CUBE pour la découpe des batiments
-        cube_mnt = get_cube_from_obj(mnt)
-        pos = cube_mnt.GetRelPos()
-        #lorsque l'on génére le mnt la position se fait par le geotag
-        #et le déplacement se fait après, du coup c'est le moyen pas très élégant
-        #que j'ai trouvé pour que le cube soit au bon endroit'
-        geotag = mnt.GetTag(GEOTAG_ID)
-        if geotag:
-            cube_mnt
-            pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
-            cube_mnt.SetRelPos(pos)
+            #CUBE pour la découpe des batiments
+            cube_mnt = get_cube_from_obj(mnt)
+            pos = cube_mnt.GetRelPos()
+            #lorsque l'on génére le mnt la position se fait par le geotag
+            #et le déplacement se fait après, du coup c'est le moyen pas très élégant
+            #que j'ai trouvé pour que le cube soit au bon endroit'
+            geotag = mnt.GetTag(GEOTAG_ID)
+            if geotag:
+                cube_mnt
+                pos+= geotag[CONTAINER_ORIGIN] - doc[CONTAINER_ORIGIN]
+                cube_mnt.SetRelPos(pos)
     
-    doc.InsertObject(null_maquette)
-    doc.AddUndo(c4d.UNDOTYPE_NEW,null_maquette)
+        doc.InsertObject(null_maquette)
+        doc.AddUndo(c4d.UNDOTYPE_NEW,null_maquette)
 
-    ##############################################
-    #ENVIRONNEMENT
-    ##############################################
-    #on crée seulement si on n'en trouve pas déjà un 
-    if not doc.SearchObject('environnement'):
-        environnement = c4d.BaseObject(c4d.Onull)
-        environnement.SetName('environnement')
+        ##############################################
+        #ENVIRONNEMENT
+        ##############################################
+        #on crée seulement si on n'en trouve pas déjà un
+        if not doc.SearchObject('environnement'):
+            environnement = c4d.BaseObject(c4d.Onull)
+            environnement.SetName('environnement')
 
-        #MATERIAU ARRIERE-PLAN
-        mat_back = c4d.BaseMaterial(c4d.Mmaterial)
-        mat_back.SetName('Fond')
-        mat_back[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
+            #MATERIAU ARRIERE-PLAN
+            mat_back = c4d.BaseMaterial(c4d.Mmaterial)
+            mat_back.SetName('Fond')
+            mat_back[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
         
-        doc.InsertMaterial(mat_back)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat_back)
+            doc.InsertMaterial(mat_back)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat_back)
 
-        #SOL
-        sol = c4d.BaseObject(c4d.Ofloor)
-        if mnt and alt_min:
-            sol.SetAbsPos(c4d.Vector(0,alt_min,0))
-        #compositing tag pour compositing background
-        tag_comp = c4d.BaseTag(c4d.Tcompositing)   
-        tag_comp[c4d.COMPOSITINGTAG_BACKGROUND] = True
-        sol.InsertTag(tag_comp)
-        #tag materiau
-        mat_tag = c4d.TextureTag()
-        mat_tag.SetMaterial(mat_back)
-        mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
-        sol.InsertTag(mat_tag)
-        sol.InsertUnder(environnement)
+            #SOL
+            sol = c4d.BaseObject(c4d.Ofloor)
+            if mnt and alt_min:
+                sol.SetAbsPos(c4d.Vector(0,alt_min,0))
+            #compositing tag pour compositing background
+            tag_comp = c4d.BaseTag(c4d.Tcompositing)
+            tag_comp[c4d.COMPOSITINGTAG_BACKGROUND] = True
+            sol.InsertTag(tag_comp)
+            #tag materiau
+            mat_tag = c4d.TextureTag()
+            mat_tag.SetMaterial(mat_back)
+            mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+            sol.InsertTag(mat_tag)
+            sol.InsertUnder(environnement)
         
-        #ARRIERE-PLAN
-        bg = c4d.BaseObject(c4d.Obackground)
-        mat_tag = c4d.TextureTag()
-        mat_tag.SetMaterial(mat_back)
-        mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
-        bg.InsertTag(mat_tag)
-        bg.InsertUnder(environnement)
+            #ARRIERE-PLAN
+            bg = c4d.BaseObject(c4d.Obackground)
+            mat_tag = c4d.TextureTag()
+            mat_tag.SetMaterial(mat_back)
+            mat_tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FRONTAL
+            bg.InsertTag(mat_tag)
+            bg.InsertUnder(environnement)
 
 
-        doc.InsertObject(environnement)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,environnement)
+            doc.InsertObject(environnement)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,environnement)
 
-        #GI et Ciel Physique
-        activeGI(doc)
-        sky = physical_sky_from_origin(doc)
-        #compositing tag pour qu'il ne soit pas visible
-        tag_comp = c4d.BaseTag(c4d.Tcompositing)    
-        tag_comp[c4d.COMPOSITINGTAG_SEENBYCAMERA] = False
-        sky.InsertTag(tag_comp)
-        sky.InsertUnder(environnement)
-
-    doc.EndUndo()
+            #GI et Ciel Physique
+            activeGI(doc)
+            sky = physical_sky_from_origin(doc)
+            #compositing tag pour qu'il ne soit pas visible
+            tag_comp = c4d.BaseTag(c4d.Tcompositing)
+            tag_comp[c4d.COMPOSITINGTAG_SEENBYCAMERA] = False
+            sky.InsertTag(tag_comp)
+            sky.InsertUnder(environnement)
+    finally:
+        doc.EndUndo()
     c4d.EventAdd()
 
 # Execute main()

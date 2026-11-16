@@ -51,4 +51,4 @@ def get(doc):
 
 # Execute main()
 if __name__=='__main__':
-    print(get(doc))
+    print(get(c4d.documents.GetActiveDocument()))

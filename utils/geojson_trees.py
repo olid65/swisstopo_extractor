@@ -187,14 +187,21 @@ def decoupeSpline(sp,sp_cut):
 
 # Main function
 def main():
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if op is None:
+        return
     sp_cut = op
     if not sp_cut.GetRealSpline():
         sp_cut = None
 
-    fn_trees = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo/Trient2/swisstopo/trees.geojson'
+    directory = c4d.storage.LoadDialog(flags=c4d.FILESELECT_DIRECTORY, title="Dossier des fichiers GeoJSON")
+    if not directory:
+        return
+    fn_trees = os.path.join(directory, "trees.geojson")
     #fn = '/Users/olivierdonze/Documents/TEMP/test_geojson_trees_swisstopo/exemple_404.geojson'
 
-    fn_forest = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo/Trient2/swisstopo/forest.geojson'
+    fn_forest = os.path.join(directory, "forest.geojson")
 
     origine = doc[CONTAINER_ORIGIN]
     if not origine:
@@ -229,7 +236,7 @@ def main():
                 sp_res.InsertUnder(null_foret)
     else:
         for sp in forets:
-            sp_res.InsertUnder(null_foret)
+            sp.InsertUnder(null_foret)
     doc.InsertObject(null_foret)
 
 

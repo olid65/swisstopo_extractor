@@ -147,27 +147,25 @@ def transfert_mat(plane, obj_dst, doc):
     
     
 # Main function
-def main():
-    try :
-        plane, *lst_objs_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
-    except:
-        c4d.gui.MessageDialog("Vous devez sélectioner au moins deux objets, l'objet plan avec le matériau, puis les objets de destination en appuyant sur la touche CTRL/CMD")
-        return
-    for obj_dst in lst_objs_dst:
-        transfert_mat(plane, obj_dst, doc)
+def main(doc=None):
+    doc = doc if doc is not None else c4d.documents.GetActiveDocument()
+    selection = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
+    if len(selection) < 2:
+        c4d.gui.MessageDialog("Sélectionnez le plan source puis au moins un objet de destination.")
+        return False
+    doc.StartUndo()
+    try:
+        for obj_dst in selection[1:]:
+            transfert_mat(selection[0], obj_dst, doc)
+    finally:
+        doc.EndUndo()
+    return True
+
 
 class MaterialTransfer(c4d.plugins.CommandData):
     def Execute(self, doc):
-        doc.StartUndo()
-        try :
-            plane, *lst_objs_dst = doc.GetActiveObjects(c4d.GETACTIVEOBJECTFLAGS_SELECTIONORDER)
-        except:
-            c4d.gui.MessageDialog("Vous devez sélectioner au moins deux objets, l'objet plan avec le matériau, puis les objets de destination en appuyant sur la touche CTRL/CMD")
-            return
-        for obj_dst in lst_objs_dst:
-            transfert_mat(plane, obj_dst, doc)
-        doc.EndUndo()
-        return True
+        return main(doc)
+
 
 def icone(nom) :
     bmp = c4d.bitmaps.BaseBitmap()

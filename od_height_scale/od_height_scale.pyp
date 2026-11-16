@@ -123,7 +123,9 @@ def searchObjectInHierarchy(obj, name,stop = None):
         obj = obj.GetNext()
     return None
 
-def getGeoTags(obj, lst = [],stop = None):
+def getGeoTags(obj, lst=None,stop = None):
+    if lst is None:
+        lst = []
     """Fonction récursive pour rechercher les geotags de la hiérarchie d'un objet"""
     while obj:
         if obj.GetTag(ID_GEOTAG):
@@ -134,7 +136,9 @@ def getGeoTags(obj, lst = [],stop = None):
         obj = obj.GetNext()
     return lst
 
-def searchCloneurs(obj, lst = [], stop = None):
+def searchCloneurs(obj, lst=None, stop = None):
+    if lst is None:
+        lst = []
     while obj:
         if obj.CheckType(c4d.Omgcloner):
             lst.append(obj)

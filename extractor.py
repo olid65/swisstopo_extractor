@@ -17,7 +17,9 @@ import subprocess
 sys.path.append(os.path.dirname(__file__))
 from thread_download import ThreadDownload
 
-from maquette_depuis_dossier_swissextractor import main as import_maquette
+from maquette_depuis_dossier_swissextractor import (main as import_maquette, createVRTfromDir,
+                                                    extractFromBbox as extract_raster_bbox, dirImgToTextFile,
+                                                    getPathToQGISbin, gdalBIN_OK)
 import utils.trees_esri_rest_api_geojson as trees
 
 
@@ -51,99 +53,10 @@ LOCATIONS_FILE = os.path.join(os.path.dirname(__file__),'noms_lieux.json')
 
 TXT_NO_FILE_TO_DOWNLOAD = "Tous les fichiers existent déjà, ou il n'y a pas de fichier à télécharger"
 
-def dirImgToTextFile(path_dir, ext = '.tif'):
-    """crée un fichier texte avec le chemin de l'image pour chaque ligne"""
-    fn_txt = path_dir+'.txt'
-    len_ext = len(ext)
-    lst_img = [os.path.join(path_dir,fn) for fn in os.listdir(path_dir) if fn[-len_ext:] == ext]
+def extractFromBbox(raster_srce, raster_dst, xmin, ymin, xmax, ymax, path_to_gdal_translate=None):
+    return extract_raster_bbox(raster_srce, raster_dst, xmin, ymin, xmax, ymax,
+                               path_to_gdal_translate=path_to_gdal_translate)
 
-    if lst_img :
-        with open(fn_txt,'w') as f:
-            for fn in lst_img:
-                f.write(fn+'\n')
-        return fn_txt
-    return False
-
-##################################################################################################
-#GDAL
-##################################################################################################
-
-def getPathToQGISbin(path_to_QGIS = None):
-    #Si le path_to_QGIS n'est pas renseigné on prend le chemin par défaut selon la plateforme
-    win = sys.platform == 'win32'
-    if not path_to_QGIS:
-        if sys.platform == 'win32':
-            path_to_QGIS = 'C:\\Program Files'
-        else:
-            path_to_QGIS = '/Applications'
-    for folder_name in os.listdir(path_to_QGIS):
-        if 'QGIS'  in folder_name:
-            if win :
-                path = os.path.join(path_to_QGIS,folder_name,'bin')
-            else:
-
-                path = os.path.join(path_to_QGIS,folder_name,'Contents/MacOS/bin')
-
-            if os.path.isdir(path):
-                return path
-    return None
-
-def gdalBIN_OK(path_to_QGIS_bin, exe = 'gdal_translate'):
-    if sys.platform == 'win32':
-        exe+='.exe'
-    path = os.path.join(path_to_QGIS_bin,exe)
-    if os.path.isfile(path):
-        return path
-    else:
-        return False
-
-def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
-    if not path_to_gdalbuildvrt:
-        path_to_QGIS_bin = getPathToQGISbin()
-        if path_to_QGIS_bin:
-            path_to_gdalbuildvrt = gdalBIN_OK(path_to_QGIS_bin, exe = 'gdalbuildvrt')
-
-    if not path_to_gdalbuildvrt:
-        c4d.gui.MessageDialog("La génération du raster virtuel (.vrt) est impossible")
-        return False
-    fn_vrt = path_tifs+'.vrt'
-    #fichier texte avec listes images tif
-    lst_img_txt = dirImgToTextFile(path_tifs, ext = '.tif')
-    if lst_img_txt:
-        req = f'"{path_to_gdalbuildvrt}" -input_file_list "{lst_img_txt}" "{fn_vrt}"'
-        output = subprocess.check_output(req,shell=True)
-        #on supprime le fichier txt
-        os.remove(lst_img_txt)
-        if os.path.isfile(fn_vrt):
-            return fn_vrt
-
-    return False
-
-def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,path_to_gdal_translate = None):
-    """normalement l'extension du fichier de destination permet le choix du format (à vérifier)
-       si on a du .png ou du .jpg un fichier wld est généré"""
-
-    name,ext = os.path.splitext(raster_dst)
-    if ext in ['.jpg','.png']:
-        wld = '-co worldfile=yes'
-    else:
-        wld = ''
-    if not path_to_gdal_translate:
-        path_to_QGIS_bin = getPathToQGISbin()
-        if path_to_QGIS_bin:
-            path_to_gdal_translate = gdalBIN_OK(path_to_QGIS_bin, exe = 'gdal_translate')
-
-    if not path_to_gdal_translate:
-        c4d.gui.MessageDialog("L'extraction est impossible, gdal_translate non trouvé")
-        return False
-    req = f'"{path_to_gdal_translate}" {wld} -projwin {xmin} {ymax} {xmax} {ymin} "{raster_srce}" "{raster_dst}"'
-    output = subprocess.check_output(req,shell=True)
-    if os.path.isfile(raster_dst):
-        return raster_dst
-
-    return False
-
-######################################################################################################
 
 def verify_web_connexion(hostname = "www.google.com"):
   """pour vérifier s'il y a une connexion internet"""
@@ -154,9 +67,9 @@ def verify_web_connexion(hostname = "www.google.com"):
     host = socket.gethostbyname(hostname)
     # connect to the host -- tells us if the host is actually
     # reachable
-    s = socket.create_connection((host, 80), 2)
-    return True
-  except:
+    with socket.create_connection((host, 80), 2):
+        return True
+  except OSError:
      pass
   return False
 
@@ -217,12 +130,10 @@ def bbox2shapefile(mini, maxi):
         fichierPRJ(fn)
 
 def lv95towgs84(x,y):
-    url = f'http://geodesy.geo.admin.ch/reframe/lv95towgs84?easting={x}&northing={y}&format=json'
+    url = f'https://geodesy.geo.admin.ch/reframe/lv95towgs84?easting={x}&northing={y}&format=json'
 
-    f = urllib.request.urlopen(url)
-    #TODO : vérifier que cela à bien fonctionnéé (code =200)
-    txt = f.read().decode('utf-8')
-    json_res = json.loads(txt)
+    with urllib.request.urlopen(url, timeout=30) as response:
+        json_res = json.load(response)
 
     return float(json_res['easting']),float(json_res['northing'])
 
@@ -254,9 +165,8 @@ def get_list_from_STAC_swisstopo(url,xmin,ymin,xmax,ymax, gdb = False):
     #https://data.geo.admin.ch/api/stac/v0.9/collections/ch.swisstopo.swissalti3d/items?bbox=6.797407364919968,46.35199189622441,6.989626299351063,46.41380860470992
 
     while url :
-        f = urllib.request.urlopen(url)
-        txt = f.read().decode('utf-8')
-        json_res = json.loads(txt)
+        with urllib.request.urlopen(url, timeout=30) as response:
+            json_res = json.load(response)
         #print(url)
         url = None
         links = json_res.get('links', None)
@@ -777,6 +687,15 @@ class DlgBbox(c4d.gui.GeDialog):
 
 
     def Command(self, id, msg):
+        try:
+            return self.handle_command(id, msg)
+        except Exception as error:
+            import traceback
+            traceback.print_exc()
+            c4d.gui.MessageDialog(f"Extraction impossible : {error}")
+            return False
+
+    def handle_command(self, id, msg):
         #########
         # 1 : GEOLOCALISATION
         #########
@@ -933,16 +852,18 @@ class DlgBbox(c4d.gui.GeDialog):
                 return True
             doc = c4d.documents.GetActiveDocument()
             doc.StartUndo()
-            origine = doc[CONTAINER_ORIGIN]
-            if not origine:
-                origine = (mini + maxi) / 2
-                # pas réussi à faire un undo pour le doc !
-                doc[CONTAINER_ORIGIN] = origine
+            try:
+                origine = doc[CONTAINER_ORIGIN]
+                if not origine:
+                    origine = (mini + maxi) / 2
+                    # pas réussi à faire un undo pour le doc !
+                    doc[CONTAINER_ORIGIN] = origine
 
-            plane = self.planeFromBbox(mini, maxi, origine)
-            doc.AddUndo(c4d.UNDOTYPE_NEW, plane)
-            doc.InsertObject(plane)
-            doc.EndUndo()
+                plane = self.planeFromBbox(mini, maxi, origine)
+                doc.AddUndo(c4d.UNDOTYPE_NEW, plane)
+                doc.InsertObject(plane)
+            finally:
+                doc.EndUndo()
             c4d.EventAdd()
 
         # EXPORT SHAPEFILE
@@ -1045,6 +966,8 @@ class DlgBbox(c4d.gui.GeDialog):
         #TODO : désactiver le bouton si les coordonnées ne sont pas bonnes !
 
         if id == self.BTON_GET_URLS_DOWNLOAD:
+            if getattr(self, "thread", None) and self.thread.IsRunning():
+                return True
             #Vérification que le fichier est enregistré
             doc = c4d.documents.GetActiveDocument()
 
@@ -1066,7 +989,7 @@ class DlgBbox(c4d.gui.GeDialog):
             #GDAL ne supporte pas
             try : 
                 path_doc.encode(encoding='ASCII')
-            except:
+            except UnicodeEncodeError:
                 c4d.gui.MessageDialog(self.TXT_PATH_CAR_SPECIAL)
                 return True
 
@@ -1193,8 +1116,8 @@ class DlgBbox(c4d.gui.GeDialog):
                     #si le fichier existe on ne le télécharge pas
                     #attention pour les dxf il s'agit de fichier zip qui sont ensuite décompressés!
                     #l'extension se termine par '.dxf.zip' -> je supprime seulement le .zip
-                    fn_temp = fn.replace('.zip','')
-                    if not os.path.isfile(fn_temp):                            
+                    fn_temp = fn[:-4] if fn.lower().endswith('.zip') else fn
+                    if not os.path.exists(fn_temp):
                         self.dwload_lst.append((url,fn))
                         
                     #pour les orthos c'est un peu bizarre
@@ -1216,7 +1139,7 @@ class DlgBbox(c4d.gui.GeDialog):
                 #ARBRES ISOLES
                 if self.GetBool(self.CHECKBOX_TREES):
                     name_file = 'trees.geojson'
-                    fn = fn = os.path.join(pth,name_file)
+                    fn = os.path.join(pth,name_file)
 
                     if self.spline_cut:
                         url = trees.url_geojson_trees(self.spline_cut,origine)
@@ -1229,7 +1152,7 @@ class DlgBbox(c4d.gui.GeDialog):
                 #FORETS
                 if self.GetBool(self.CHECKBOX_FOREST):
                     name_file = 'forest.geojson'
-                    fn = fn = os.path.join(pth,name_file)
+                    fn = os.path.join(pth,name_file)
 
                     if self.spline_cut:
                         url = trees.url_geojson_forest(self.spline_cut,origine)
@@ -1264,17 +1187,27 @@ class DlgBbox(c4d.gui.GeDialog):
         return True
 
     def Timer(self,msg):
-        nb = 0
-        for url,fn in self.dwload_lst:
-            if os.path.isfile(fn):
-                nb+=1
+        try:
+            self.update_download_status()
+        except Exception as error:
+            self.SetTimer(0)
+            import traceback
+            traceback.print_exc()
+            c4d.gui.MessageDialog(f"Impossible de terminer la maquette : {error}")
 
+    def update_download_status(self):
+        nb = self.thread.completed
         self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'nombre de fichiers téléchargés : {nb}/{len(self.dwload_lst)}')
 
         #si le thread est terminé on arrête le Timer et on lance la création des vrt
         if not self.thread.IsRunning():
             self.SetTimer(0)
-            self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'Téléchargement terminé')
+            if self.thread.errors:
+                self.gen = False
+                self.SetString(self.ID_TXT_DOWNLOAD_STATUS, "Téléchargement incomplet")
+                c4d.gui.MessageDialog("\n".join(self.thread.errors))
+                return
+            self.SetString(self.ID_TXT_DOWNLOAD_STATUS, "Téléchargement terminé")
             self.qgispath = getPathToQGISbin()
 
             if not self.qgispath:

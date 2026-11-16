@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import random
 import c4d, math, os
 from glob import glob
 
@@ -205,7 +206,9 @@ def connect(lst_poly, nom = None):
     res.Message(c4d.MSG_UPDATE)
     return res
 
-def getBatiHorsBbox(bbx,obj, lst = []):
+def getBatiHorsBbox(bbx,obj, lst=None):
+    if lst is None:
+        lst = []
     while obj:
         if obj.CheckType(c4d.Opolygon):
             bbx2 = Bbox.fromObj(obj)
@@ -215,7 +218,9 @@ def getBatiHorsBbox(bbx,obj, lst = []):
         obj = obj.GetNext()
     return lst
 
-def getPolyObj(obj, lst = []):
+def getPolyObj(obj, lst=None):
+    if lst is None:
+        lst = []
     while obj:
         if obj.CheckType(c4d.Opolygon):
             lst.append(obj)
@@ -369,10 +374,14 @@ def importSwissBuildings(path, doc, cube_mnt):
     return res
 
 def main():
-    path = '/Users/olivierdonze/Documents/TEMP/test_dwnld_swisstopo/PLO/swisstopo'
+    path = c4d.storage.LoadDialog(flags=c4d.FILESELECT_DIRECTORY, title="Dossier SwissBuildings3D")
+    if not path:
+        return
     doc = c4d.documents.GetActiveDocument()
-    cube_mnt = op
-    buildings = importSwissBuidings(path, doc, cube_mnt)
+    cube_mnt = doc.GetActiveObject()
+    if not cube_mnt:
+        return
+    buildings = importSwissBuildings(path, doc, cube_mnt)
     
     doc.InsertObject(buildings)
     c4d.EventAdd()

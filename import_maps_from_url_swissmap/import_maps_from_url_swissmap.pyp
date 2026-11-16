@@ -1,3 +1,4 @@
+import random
 import c4d
 import os
 import json
@@ -71,6 +72,9 @@ def empriseVueHaut(bd,origine):
 
     return  mini,maxi,largeur,hauteur
 
+_generated_images = set()
+
+
 def display_wms_swisstopo(layer):
 
     #le doc doit être en mètres
@@ -109,7 +113,7 @@ def display_wms_swisstopo(layer):
 
     #pour le format de la date regarder : https://docs.python.org/fr/3/library/datetime.html#strftime-strptime-behavior
     dt = datetime.now()
-    suffixe_time = dt.strftime("%y%m%d_%H%M%S")
+    suffixe_time = dt.strftime("%y%m%d_%H%M%S_%f")
 
     fn = f'ortho{suffixe_time}.png'
     fn_img = os.path.join(dossier_img,fn)
@@ -121,23 +125,24 @@ def display_wms_swisstopo(layer):
     #print (mini.x,mini.z,maxi.x,maxi.z)
     bbox = f'{mini.x},{mini.z},{maxi.x},{maxi.z}'
 
-    url = f'http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
+    url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
     #print(url)
 
 
 
     try:
-        x = urllib.request.urlopen(url)
+        with urllib.request.urlopen(url, timeout=30) as response:
+            image = response.read()
+        if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("Le service WMS n’a pas renvoyé une image PNG.")
+        with open(fn_img, "xb") as output:
+            output.write(image)
+    except (OSError, ValueError) as error:
+        c4d.gui.MessageDialog(f"Image swisstopo indisponible : {error}")
+        return
 
-        with open(fn_img,'wb') as saveFile:
-            saveFile.write(x.read())
-
-    except Exception as e:
-        print(str(e))
-
-    #on récupère l'ancienne image
-    old_fn = os.path.join(dossier_img,bd[c4d.BASEDRAW_DATA_PICTURE])
-
+    old_fn = os.path.join(dossier_img, bd[c4d.BASEDRAW_DATA_PICTURE] or "")
+    _generated_images.add(fn_img)
     bd[c4d.BASEDRAW_DATA_PICTURE] = fn
     bd[c4d.BASEDRAW_DATA_SIZEX] = maxi.x-mini.x
     bd[c4d.BASEDRAW_DATA_SIZEY] = maxi.z-mini.z
@@ -150,11 +155,15 @@ def display_wms_swisstopo(layer):
 
     #bd[c4d.BASEDRAW_DATA_SHOWPICTURE] = False
 
-    #suppression de l'ancienne image
-    #TODO : s'assurer que c'est bien une image générée NE PAS SUPPRIMER N'IMPORTE QUOI !!!
-    if os.path.exists(old_fn):
-        try : os.remove(old_fn)
-        except : pass
+    if old_fn in _generated_images and old_fn != fn_img:
+        try:
+            os.remove(old_fn)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            print(f"Ancienne image conservée : {error}")
+        else:
+            _generated_images.discard(old_fn)
     c4d.EventAdd(c4d.EVENT_FORCEREDRAW)
 
 def tex_folder(doc, subfolder = None):
@@ -384,7 +393,7 @@ def coordFromClipboard():
     try :
         res = [float(s) for s in clipboard.split(',')]
         xmin,ymin,xmax,ymax = res
-    except :
+    except (TypeError, ValueError):
         return None
 
     return Bbox(c4d.Vector(xmin,0,ymin),c4d.Vector(xmax,0,ymax))
@@ -403,9 +412,9 @@ def url_swissmap(url):
     if len(url)> len_pref_courte and url[:len_pref_courte] == pref_courte:
         # timeout in seconds
         timeout = 5
-        socket.setdefaulttimeout(timeout)
 
-        with urllib.request.urlopen(url) as f:
+
+        with urllib.request.urlopen(url, timeout=30) as f:
             url_full = f.geturl()
             return url_full
 
@@ -561,7 +570,7 @@ class SwissImagesDlg (c4d.gui.GeDialog):
         #Obtention de toutes les couches et création d'un dico pour la traduction
         url = 'https://api3.geo.admin.ch/rest/services/api/MapServer?lang=fr'
         dic_translate = {}
-        with urllib.request.urlopen(url) as f:
+        with urllib.request.urlopen(url, timeout=30) as f:
             #TODO : vérifier que cela à bien fonctionnéé (code =200)
             txt = f.read().decode('utf-8')
             json_res = json.loads(txt)
@@ -704,19 +713,19 @@ class SwissImagesDlg (c4d.gui.GeDialog):
         print(xmin,ymin,xmax,ymax)
         print(width,height)
         #url = f'{url_base}export?bbox={xmin},{ymin},{xmax},{ymax}&format={format}&size={width},{height}&f=image&bboxSR={sr}&imageSR={sr}'#.format(bbox,size,bboxSR,imageSR)
-        url = f'http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={xmin},{ymin},{xmax},{ymax}&WIDTH={width}&HEIGHT={height}&FORMAT=image/png'
+        url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={xmin},{ymin},{xmax},{ymax}&WIDTH={width}&HEIGHT={height}&FORMAT=image/png'
 
         try :
-            x = urllib.request.urlopen(url)
+            x = urllib.request.urlopen(url, timeout=30)
 
-        except :
+        except OSError:
             c4d.gui.MessageDialog(f'Problème pour le téléchargement de {name}')
             return None
 
         try:
-            with open(fn_img,'wb') as saveFile:
+            with x, open(fn_img,'wb') as saveFile:
                 saveFile.write(x.read())
-        except :
+        except OSError:
             c4d.gui.MessageDialog(self.TXT_FILE_CREATION_PROBLEM)
             return None
 
@@ -724,21 +733,21 @@ class SwissImagesDlg (c4d.gui.GeDialog):
             return None
 
         doc.StartUndo()
+        try:
+            #création du matériau
+            mat = creer_mat(fn_img, doc, nom_mat = name, alpha = False)
+            doc.InsertMaterial(mat)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
 
-        #création du matériau
-        mat = creer_mat(fn_img, doc, nom_mat = name, alpha = False)
-        doc.InsertMaterial(mat)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
+            plan = creer_plan(name,mat,(xmax-xmin),(ymax-ymin), projection= 'top')
+            centre = c4d.Vector((xmax+xmin)/2,0,(ymax+ymin)/2) - doc[CONTAINER_ORIGIN]
+            plan.SetAbsPos(centre)
+            doc.InsertObject(plan)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
 
-        plan = creer_plan(name,mat,(xmax-xmin),(ymax-ymin), projection= 'top')
-        centre = c4d.Vector((xmax+xmin)/2,0,(ymax+ymin)/2) - doc[CONTAINER_ORIGIN]
-        plan.SetAbsPos(centre)
-        doc.InsertObject(plan)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
-
-        plan_edit = make_editable(plan,doc)
-
-        doc.EndUndo()
+            plan_edit = make_editable(plan,doc)
+        finally:
+            doc.EndUndo()
         c4d.EventAdd()
 
 

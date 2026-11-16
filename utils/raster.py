@@ -38,7 +38,7 @@ def is_in_doc_path(fn,doc):
 
 class Geopict ():
 
-    """classe pour la gestion d'images g\or\f\renc\es"""
+    """Calage et création du plan texturé dans le repère de la scène."""
 
     def __init__(self,fn,fn_calage,doc):
         self.doc = doc
@@ -52,27 +52,8 @@ class Geopict ():
 
     def readCalage(self):
         """fonction pour la lecture du fichier de calage"""
-        try :
-            with open(self.f_calage,'r') as f :
-               self.val_pix = float(f.readline().split()[0])
-               val2 = float(f.readline().split()[0])
-               val3 = float(f.readline().split()[0])
-               val4 = float(f.readline().split()[0])
-               self.val_x = float(f.readline().split()[0])
-               self.val_z = float(f.readline().split()[0])
-               f.close()
-
-
-        except IOError:
-            print ("Il n'y a pas de fichier de calage")
-            return False
-
-            
-
-        else :
-            return True
-
-            
+        self.val_pix, _, _, _, self.val_x, self.val_z = world_file_values(self.f_calage)
+        return True
 
     def calculRef(self):
 
@@ -80,7 +61,9 @@ class Geopict ():
 
         try:
             fn = self.fn
-            bmp.InitWith(fn)
+            result, _ = bmp.InitWith(fn)
+            if result != c4d.IMAGERESULT_OK:
+                raise ValueError(f"Image illisible : {fn}")
             self.size_px = bmp.GetSize()
             self.size = c4d.Vector(self.size_px[0]*self.val_pix,0,
                          self.size_px[1]*self.val_pix)
@@ -88,9 +71,8 @@ class Geopict ():
             self.min = c4d.Vector(self.val_x - self.val_pix/2.0,0.0,self.val_z + self.val_pix/2.0 -self.size.z)
             self.max = self.min+self.size
             self.centre = (self.min+self.max)/2.0
-        except :
-
-            print ("Probleme avec l'image")
+        except (OSError, RuntimeError) as error:
+            raise ValueError(f"Image illisible : {self.fn}") from error
 
             
 
@@ -197,29 +179,28 @@ class Geopict ():
 
 
 
+def world_file_values(path):
+    """Les deux dernières valeurs positionnent le centre du pixel supérieur gauche."""
+    with open(path, encoding="utf-8-sig") as stream:
+        lines = stream.read().splitlines()
+    if len(lines) != 6:
+        raise ValueError(f"Six lignes sont attendues dans le fichier de calage {path}.")
+    try:
+        return tuple(float(line.strip()) for line in lines)
+    except ValueError as error:
+        raise ValueError(f"Valeur numérique invalide dans le fichier de calage {path}.") from error
+
+
 def readTFW(fn):
-    if fn :
-        try :
-            with open(fn,'r') as f :
-               val_pix = float(f.readline().split()[0])
-               val2 = float(f.readline().split()[0])
-               val3 = float(f.readline().split()[0])
-               val4 = float(f.readline().split()[0])
-               val_x = float(f.readline().split()[0])
-               val_z = float(f.readline().split()[0])
-               f.close()
-
-
-        except IOError:
-            print ("Il n'y a pas de fichier")
-            return False            
-
-        else :
-            return True
-
-    else :
+    if not fn:
         return False
- 
+    try:
+        world_file_values(fn)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def isInMetre(doc):
     scale, unit = doc[c4d.DOCUMENT_DOCUNIT].GetUnitScale()
     if unit == c4d.DOCUMENT_UNIT_M :return True

@@ -83,6 +83,10 @@ def decoupeMNTfromVolume(mnt,volume_decoupe):
 
 # Main function
 def main():
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if op is None:
+        return
     mnt = op
     sp = op.GetNext()
     volume_decoupe = volumeFromSpline(sp)

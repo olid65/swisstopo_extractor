@@ -94,7 +94,7 @@ def get_info_from_fn(fn):
     req = re.search(p,txt)
     if req:
         try : scale = int(req.group()[len(CODE_SCALE):])
-        except:
+        except ValueError:
             print(f"problème avec scale : {txt}")
 
     #extraction de la résolution par ex 220dpi 300DPI
@@ -104,7 +104,7 @@ def get_info_from_fn(fn):
     req = re.search(p2,txt)
     if req:
         try : resolution=int(req.group()[:-len(CODE_RESOLUTION)])
-        except:
+        except ValueError:
             print(f"problème avec resolution : {txt}")
 
     return projection,scale,resolution
@@ -276,114 +276,114 @@ def importImages(file = False):
     #Parcours des images
     dic_planes = {}
     doc.StartUndo()
-    for fn in lst_files:
-        largeur,hauteur = 0,0
+    try:
+        for fn in lst_files:
+            largeur,hauteur = 0,0
 
-        alpha = -1
+            alpha = -1
 
-        # si c'est un png on essaie de récupèrer directement la taille via la lib png
-        if fn[-4:]=='.png':
-            rep = png_get_size_in_meter(fn)
-            if rep:
-                largeur,hauteur, alpha = rep
+            # si c'est un png on essaie de récupèrer directement la taille via la lib png
+            if fn[-4:]=='.png':
+                rep = png_get_size_in_meter(fn)
+                if rep:
+                    largeur,hauteur, alpha = rep
 
-        #print(largeur,hauteur)
+            #print(largeur,hauteur)
 
-        #récupération des différentes valeurs depuis le nom
-        projection,scale,resolution = get_info_from_fn(fn)
-        #print(projection,scale,resolution)
+            #récupération des différentes valeurs depuis le nom
+            projection,scale,resolution = get_info_from_fn(fn)
+            #print(projection,scale,resolution)
 
-        #valeurs par defaut si pas renseigné
-        #on met une couleur d'icônedifférente pour chaque cas de figure
-        color = None
-        if projection and scale:
-            color = COLOR_SCALE_AND_RESOLUTION
-        if not projection : projection= DEFAULT_PROJECTION
-        if not scale : scale = DEFAULT_SCALE
-        if not resolution : resolution = DEFAULT_RESOLUTION
-        #print(projection,scale,resolution)
+            #valeurs par defaut si pas renseigné
+            #on met une couleur d'icônedifférente pour chaque cas de figure
+            color = None
+            if projection and scale:
+                color = COLOR_SCALE_AND_RESOLUTION
+            if not projection : projection= DEFAULT_PROJECTION
+            if not scale : scale = DEFAULT_SCALE
+            if not resolution : resolution = DEFAULT_RESOLUTION
+            #print(projection,scale,resolution)
 
-        # si on n'a pas réussi à récupérer ces valeurs
-        # on utilise BaseBitmap
-        if not largeur or not hauteur or alpha==-1:
-            bmp = c4d.bitmaps.BaseBitmap()
+            # si on n'a pas réussi à récupérer ces valeurs
+            # on utilise BaseBitmap
+            if not largeur or not hauteur or alpha==-1:
+                bmp = c4d.bitmaps.BaseBitmap()
 
-            result, isMovie = bmp.InitWith(fn)
-            if result == c4d.IMAGERESULT_OK: #int check
-                width,height = bmp.GetSize()
-                #TODO -> voir dans quelles unité on est par rapport au doc !!!
-                if not largeur or not hauteur:
-                    largeur = width / resolution * scale/2.54
-                    hauteur = height/ resolution * scale/2.54
+                result, isMovie = bmp.InitWith(fn)
+                if result == c4d.IMAGERESULT_OK: #int check
+                    width,height = bmp.GetSize()
+                    #TODO -> voir dans quelles unité on est par rapport au doc !!!
+                    if not largeur or not hauteur:
+                        largeur = width / resolution * scale/2.54
+                        hauteur = height/ resolution * scale/2.54
+                    else:
+                        largeur *=scale
+                        hauteur *=scale
+
+                    #on regarde s'il y a une couche alpha'
+                    if bmp.GetInternalChannel():
+                        alpha = True
+                    else:
+                        alpha = None
+
                 else:
-                    largeur *=scale
-                    hauteur *=scale
+                    print(f'problème de lecture de fichier  : {basename(fn)}')
 
-                #on regarde s'il y a une couche alpha'
-                if bmp.GetInternalChannel():
-                    alpha = True
-                else:
-                    alpha = None
 
+                #print('----')
+                bmp.FlushAll()
             else:
-                print(f'problème de lecture de fichier  : {basename(fn)}')
+                largeur*=scale
+                hauteur*=scale
 
+            #adaptation des dimensions selon l'unité du document
+            largeur*=facteur_units
+            hauteur*=facteur_units
 
-            #print('----')
-            bmp.FlushAll()
-        else:
-            largeur*=scale
-            hauteur*=scale
+            mat = creer_mat(fn,doc,alpha)
+            doc.InsertMaterial(mat)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
 
-        #adaptation des dimensions selon l'unité du document
-        largeur*=facteur_units
-        hauteur*=facteur_units
+            nom = basename(fn)
+            plan = creer_plan(nom,mat,largeur,hauteur,projection)
 
-        mat = creer_mat(fn,doc,alpha)
-        doc.InsertMaterial(mat)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
+            #Tag d'affichage en mode constant
+            display_tag = c4d.BaseTag(c4d.Tdisplay)
+            display_tag[c4d.DISPLAYTAG_AFFECT_DISPLAYMODE] = True
+            display_tag[c4d.DISPLAYTAG_SDISPLAYMODE] = c4d.DISPLAYTAG_SDISPLAY_FLAT_WIRE
+            plan.InsertTag(display_tag)
 
-        nom = basename(fn)
-        plan = creer_plan(nom,mat,largeur,hauteur,projection)
-
-        #Tag d'affichage en mode constant
-        display_tag = c4d.BaseTag(c4d.Tdisplay)
-        display_tag[c4d.DISPLAYTAG_AFFECT_DISPLAYMODE] = True
-        display_tag[c4d.DISPLAYTAG_SDISPLAYMODE] = c4d.DISPLAYTAG_SDISPLAY_FLAT_WIRE
-        plan.InsertTag(display_tag)
-
-        # si on a une couleur c'est que l'échelle et la résol sont normalement OK
-        #on l'indique par la couleur de l'icône
-        if color:
-            plan[c4d.ID_BASELIST_ICON_COLORIZE_MODE] = c4d.ID_BASELIST_ICON_COLORIZE_MODE_CUSTOM
-            plan[c4d.ID_BASELIST_ICON_COLOR] = color
-
-        #on stocke les plans selon leur orientation
-        dic_planes.setdefault(plan[c4d.PRIM_AXIS],[]).append(plan)
-
-        #doc.InsertObject(plan)
-        #doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
-
-    #insertion des plans
-    pred = None
-    for orient,planes in dic_planes.items():
-        pos = c4d.Vector(0)
-        for plan in planes:
-            color = plan[c4d.ID_BASELIST_ICON_COLOR]
-            pos.x+=plan[c4d.PRIM_PLANE_WIDTH]/2
-            plan.SetAbsPos(pos)
-            pos.x +=plan[c4d.PRIM_PLANE_WIDTH]/2
-            doc.InsertObject(plan, pred = pred)
-            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
-            plan_edit = make_editable(plan,doc)
+            # si on a une couleur c'est que l'échelle et la résol sont normalement OK
+            #on l'indique par la couleur de l'icône
             if color:
-                plan_edit[c4d.ID_BASELIST_ICON_COLORIZE_MODE] = c4d.ID_BASELIST_ICON_COLORIZE_MODE_CUSTOM
-                plan_edit[c4d.ID_BASELIST_ICON_COLOR] = color
+                plan[c4d.ID_BASELIST_ICON_COLORIZE_MODE] = c4d.ID_BASELIST_ICON_COLORIZE_MODE_CUSTOM
+                plan[c4d.ID_BASELIST_ICON_COLOR] = color
 
-            pred = plan
+            #on stocke les plans selon leur orientation
+            dic_planes.setdefault(plan[c4d.PRIM_AXIS],[]).append(plan)
 
+            #doc.InsertObject(plan)
+            #doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
 
-    doc.EndUndo()
+        #insertion des plans
+        pred = None
+        for orient,planes in dic_planes.items():
+            pos = c4d.Vector(0)
+            for plan in planes:
+                color = plan[c4d.ID_BASELIST_ICON_COLOR]
+                pos.x+=plan[c4d.PRIM_PLANE_WIDTH]/2
+                plan.SetAbsPos(pos)
+                pos.x +=plan[c4d.PRIM_PLANE_WIDTH]/2
+                doc.InsertObject(plan, pred = pred)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
+                plan_edit = make_editable(plan,doc)
+                if color:
+                    plan_edit[c4d.ID_BASELIST_ICON_COLORIZE_MODE] = c4d.ID_BASELIST_ICON_COLORIZE_MODE_CUSTOM
+                    plan_edit[c4d.ID_BASELIST_ICON_COLOR] = color
+
+                pred = plan
+    finally:
+        doc.EndUndo()
     c4d.EventAdd()
 
 class ImportImagesFile(c4d.plugins.CommandData):

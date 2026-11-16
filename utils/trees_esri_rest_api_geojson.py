@@ -1,3 +1,4 @@
+import os
 import c4d
 import json
 import urllib.request, urllib.error, urllib.parse
@@ -61,7 +62,7 @@ def empriseObject(obj, origine):
 def get_json_from_url(url):
     req = urllib.request.Request(url=url)
     try :
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req, timeout=30)
 
     except urllib.error.HTTPError as e:
         print(f'HTTPError: {e.code}')
@@ -97,7 +98,7 @@ def write_jsonfile(data,fn_dst):
     try:
         with open(fn_dst,'w') as f:
             f.write(json.dumps(data))
-    except:
+    except (OSError, TypeError, ValueError):
         return False
     return True
 
@@ -107,36 +108,34 @@ def write_jsonfile(data,fn_dst):
 
 #EXTRACTION DES ARBRES ISOLES (points 3D qui représentent le sommet de la couronne)
 
+def query_geometry(bbox_or_spline, origine):
+    """ArcGIS attend un polygone pour une spline et une enveloppe pour quatre coordonnées."""
+    sp = getattr(bbox_or_spline, "GetRealSpline", lambda: None)()
+    if sp:
+        return spline2json(sp, origine), "esriGeometryPolygon"
+    try:
+        xmin, ymin, xmax, ymax = map(float, bbox_or_spline)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Une emprise à quatre coordonnées ou une spline est attendue.") from error
+    return f"{xmin},{ymin},{xmax},{ymax}", "esriGeometryEnvelope"
+
+
 def url_geojson_trees(bbox_or_spline,origine):
     """ si une spline est dans bbox_or_spline renvoie les élément à l'intérieur du polygone,
         si c'est' un tuple de 4 float (bbox) renvoie les élément à l'intérieur de la bbox"""
     url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/0'
-    xmin=ymin=xmax=ymax = None
-    try:  sp = bbox_or_spline.GetRealSpline()
-    except : sp = None
-    if not sp:
-        try:
-            xmin,ymin,xmax,ymax = bbox_or_spline
-            float(xmin),float(ymin),float(xmax),float(ymax)
-        except: pass
-
-    if not sp and not xmin:
-        raise TypeError("bbox_or_spline must be a tuple of 4 floats or a SplineObject")
+    geometry, kind = query_geometry(bbox_or_spline, origine)
 
     #par défaut on met les paramètres selon la bbox (enveloppe)
     params = {
-                "geometry" : f"{xmin},{ymin},{xmax},{ymax}",
-                "geometryType": "esriGeometryEnvelope",
+                "geometry": geometry,
+                "geometryType": kind,
                 "outSR":'2056',
                 "returnGeometry":"true",
                 "returnZ": "true",
                 "spatialRel":"esriSpatialRelIntersects",
                 "f":"geojson"
               }
-    #si on a une spline on change ces deux paramètres
-    if sp:
-        params["geometry"] = spline2json(sp,origine)
-        params["geometryType"] = "esriGeometryPolygon"
 
     url = get_url(url_base,params)
     return url
@@ -164,17 +163,7 @@ def url_geojson_forest(bbox_or_spline,origine):
         si c'est' un tuple de 4 float (bbox) renvoie les élément à l'intérieur de la bbox"""
 
     url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
-    xmin=ymin=xmax=ymax = None
-    try:  sp = bbox_or_spline.GetRealSpline()
-    except : sp = None
-    if not sp:
-        try:
-            xmin,ymin,xmax,ymax = bbox_or_spline
-            float(xmin),float(ymin),float(xmax),float(ymax)
-        except: pass
-
-    if not sp and not xmin:
-        raise TypeError("bbox_or_spline must be a tuple of 4 floats or a SplineObject")
+    geometry, kind = query_geometry(bbox_or_spline, origine)
 
     #catégories dans le champ OBJEKTART que l'on récupère'
     categories ={'Gebueschwald':'Forêt buissonnante',
@@ -191,8 +180,8 @@ def url_geojson_forest(bbox_or_spline,origine):
 
     #par défaut on met les paramètres selon la bbox (enveloppe)
     params = {
-                "geometry" : f"{xmin},{ymin},{xmax},{ymax}",
-                "geometryType": "esriGeometryEnvelope",
+                "geometry": geometry,
+                "geometryType": kind,
                 "returnGeometry":"true",
                 "outFields":"OBJEKTART",
                 "orderByFields" : "OBJEKTART",
@@ -203,10 +192,6 @@ def url_geojson_forest(bbox_or_spline,origine):
                 "f":"geojson"
               }
 
-    #si on a une spline on change ces deux paramètres
-    if sp:
-        params["geometry"] = spline2json(sp,origine)
-        params["geometryType"] = "esriGeometryPolygon"
 
     url = get_url(url_base,params)
     return url
@@ -229,9 +214,16 @@ def geojson_forest(bbox_or_spline,origine,fn_dst):
 
 # Main function
 def main():
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if op is None:
+        return
 
-    fn_dst_trees = '/Users/olivierdonze/Documents/TEMP/test_geojson_trees_swisstopo/trees.geojson'
-    fn_dst_forest = '/Users/olivierdonze/Documents/TEMP/test_geojson_trees_swisstopo/forest.geojson'
+    directory = c4d.storage.LoadDialog(flags=c4d.FILESELECT_DIRECTORY, title="Dossier des fichiers GeoJSON")
+    if not directory:
+        return
+    fn_dst_trees = os.path.join(directory, "trees.geojson")
+    fn_dst_forest = os.path.join(directory, "forest.geojson")
     origine = doc[CONTAINER_ORIGIN]
 
     use_spline = False
@@ -248,32 +240,6 @@ def main():
         print(geojson_trees(bbox,origine,fn_dst_trees))
         print(geojson_forest(bbox,origine,fn_dst_forest))
 
-
-    return
-
-
-
-
-    url_base_forest = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
-
-
-    if use_spline:
-        #Points selon spline sélectionnée
-        res = geojson_trees_from_spline(op,url_base_trees,origine,fn_dst_trees)
-        print(res)
-
-        #Polygoness selon spline sélectionnée
-        res = geojson_forest_from_spline(op,url_base_forest,origine,fn_dst_forest)
-        print(res)
-
-    else:
-        #Points selon bbox
-        res = geojson_trees_from_bbox(xmin,ymin,xmax,ymax,url_base_trees,origine,fn_dst_trees)
-        print(res)
-
-        #Polygoness selon bbox
-        res = geojson_forest_from_bbox(xmin,ymin,xmax,ymax,url_base_forest,origine,fn_dst_forest)
-        print(res)
 
 # Execute main()
 if __name__=='__main__':

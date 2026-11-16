@@ -62,4 +62,4 @@ def create(doc):
 
 # Execute main()
 if __name__=='__main__':
-    main(doc)
+    create(c4d.documents.GetActiveDocument())

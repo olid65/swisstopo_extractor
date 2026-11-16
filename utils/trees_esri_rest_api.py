@@ -78,7 +78,7 @@ def createSpline(pts,segments, name):
 def get_json_from_url(url):
     req = urllib.request.Request(url=url)
     try :
-        resp = urllib.request.urlopen(req)
+        resp = urllib.request.urlopen(req, timeout=30)
 
     except urllib.error.HTTPError as e:
         print(f'HTTPError: {e.code}')
@@ -241,6 +241,10 @@ def polygons_from_bbox(xmin,ymin,xmax,ymax,url_base,origine):
 
 # Main function
 def main():
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if op is None:
+        return
 
     origine = doc[CONTAINER_ORIGIN]
 

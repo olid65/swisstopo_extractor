@@ -120,12 +120,14 @@ class Rectangle3Points(c4d.plugins.ToolData):
                     #self.ps3 = = c4d.Vector(x,y,0)
                     #self.p3 = bd.SW(self.ps2)
                     doc.StartUndo()
-                    p3 = bd.SW(c4d.Vector(x,y,0))
-                    rect = rectangle_from_3_points(self.p1,self.p2,p3)
-                    doc.InsertObject(rect)
-                    doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,rect)
-                    doc.SetActiveObject(rect)
-                    doc.EndUndo()
+                    try:
+                        p3 = bd.SW(c4d.Vector(x,y,0))
+                        rect = rectangle_from_3_points(self.p1,self.p2,p3)
+                        doc.InsertObject(rect)
+                        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,rect)
+                        doc.SetActiveObject(rect)
+                    finally:
+                        doc.EndUndo()
                     c4d.EventAdd()
                     self.p1 = None
                     self.ps1 = None

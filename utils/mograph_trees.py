@@ -136,7 +136,9 @@ def trees_mograph_cloner(doc, point_object, hauteurs, diametres, objs_srces, cen
     res.SetName(name)
 
     if centre:
-        creerGeoTag(res, doc, centre)
+        tag = c4d.BaseTag(1026472)
+        tag[1026473] = centre
+        res.InsertTag(tag)
 
     cloner = c4d.BaseObject(ID_CLONER)
     cloner.SetName(NOM_CLONER)
@@ -364,26 +366,19 @@ def mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density = 0.
 
 # Main function
 def main():
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if op is None:
+        return
     
     splines_forest = op.GetChildren()
     mnt = op.GetNext()
-    #arbres_sources = ARBRES_SOURCES
+    arbres_sources = doc.SearchObject("sources_vegetation")
     
-    forest = mograph_system_forest(splines_forest, mnt, arbres_sources, density = 0.02)
+    forest = mograph_system_forest(splines_forest, mnt, arbres_sources, doc, density=0.02)
     doc.InsertObject(forest)    
     c4d.EventAdd()
     
-    return
-    #TEST ARBRES ISOLES SELECTIONNER
-    # SELECTIONNER L'OBJET POINTS DES SOMMETS DES ARBRES
-    # PROVENANT DU GEOJSON
-    # LE MNT DOIT ETRE PLACE JUSTE APRES
-    trees_sommets = op
-    mnt = op.GetNext()
-    #arbres_sources = ARBRES_SOURCES
-    trees = mograph_system_trees(trees_sommets, mnt, arbres_sources)
-    doc.InsertObject(trees)
-    c4d.EventAdd()
     return
 # Execute main()
 if __name__=='__main__':

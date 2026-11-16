@@ -1,3 +1,4 @@
+import tempfile
 from typing import Optional
 import c4d
 import os
@@ -65,6 +66,8 @@ def get_swissbuildings3D_v3_gdbs(path):
 def gdbs2shp(lst_gdbs,path_to_ogr2ogr,xmin,zmin,xmax,zmax)->str:
     #conversion GDB->SHP
     #renvoie le chemin du dossier contenant les dossiers contenant les shapefiles
+    if not lst_gdbs:
+        raise ValueError("Aucune géodatabase SwissBuildings3D à convertir.")
     for fn_gdb in lst_gdbs:
         pth_shapefile = os.path.join(os.path.dirname(fn_gdb),'shapefiles')
         if not os.path.isdir(pth_shapefile):
@@ -72,10 +75,13 @@ def gdbs2shp(lst_gdbs,path_to_ogr2ogr,xmin,zmin,xmax,zmax)->str:
         dir_shp = os.path.join(pth_shapefile,os.path.basename(fn_gdb[:-4]))
         #on convertit uniquement si le dossier n'existe pas
         if not os.path.isdir(dir_shp):
-            os.mkdir(dir_shp)
-            req = f'"{path_to_ogr2ogr}" -spat {xmin} {zmin} {xmax} {zmax} "{dir_shp}" "{fn_gdb}"'
-            #print(req)
-            output = subprocess.check_output(req,shell=True)
+            # Publier la conversion complète pour permettre une reprise après erreur.
+            with tempfile.TemporaryDirectory(dir=pth_shapefile) as staging:
+                output = os.path.join(staging, "shapes")
+                os.mkdir(output)
+                subprocess.run([path_to_ogr2ogr, "-spat", *map(str, (xmin, zmin, xmax, zmax)),
+                                output, fn_gdb], check=True)
+                os.rename(output, dir_shp)
     return pth_shapefile
 
 
@@ -281,14 +287,12 @@ def importSwissBuildings(path, doc, cube_mnt,xmin,zmin,xmax,zmax):
     #chemin pour ogr2ogr
     path_to_QGISbin = getPathToQGISbin()
     if not path_to_QGISbin:
-        c4d.gui.MessageDialog("QGIS n'est pas installé ou le chemin n'est pas le bon")
-        return True
+        raise RuntimeError("Le dossier de QGIS est introuvable.")
 
     #on vérifie que ogr2ogr est bien là
     path_to_ogr2ogr = ogrBIN_OK(path_to_QGISbin)
-    if not path_to_QGISbin:
-        c4d.gui.MessageDialog("Il semble qu'il manque ogr2ogr dans le dossier de QGIS")
-        return True
+    if not path_to_ogr2ogr:
+        raise RuntimeError("L’outil ogr2ogr est introuvable dans le dossier de QGIS.")
 
     lst_gdbs = get_swissbuildings3D_v3_gdbs(path)
 
@@ -381,7 +385,9 @@ def importSwissBuildings(path, doc, cube_mnt,xmin,zmin,xmax,zmax):
     return res
     
 
-def getPolygonObjects(obj,lst = [], stop = None):
+def getPolygonObjects(obj,lst=None, stop = None):
+    if lst is None:
+        lst = []
     while obj:
         if obj.CheckType(c4d.Opolygon):
             lst.append(obj)
@@ -393,19 +399,31 @@ def getPolygonObjects(obj,lst = [], stop = None):
 
 def main() -> None:
 
+    doc = c4d.documents.GetActiveDocument()
+    op = doc.GetActiveObject()
+    if not op:
+        return
     cube_mnt = op.GetClone()
 
     #emprise objet
     origine = doc[CONTAINER_ORIGIN]
     xmin,zmin,xmax,zmax = empriseObject(cube_mnt, origine)
 
-    path = "/Users/olivierdonze/Documents/TEMP/test_meyrin/swisstopo"
+    path = c4d.storage.LoadDialog(flags=c4d.FILESELECT_DIRECTORY, title="Dossier SwissBuildings3D")
+    if not path:
+        return
 
     bats = importSwissBuildings(path, doc, cube_mnt, xmin, zmin, xmax, zmax)
-    doc.InsertObject(bats)
-    doc.AddUndo(c4d.UNDOTYPE_NEW,bats)
+    if not bats:
+        return
+    doc.StartUndo()
+    try:
+        doc.InsertObject(bats)
+        doc.AddUndo(c4d.UNDOTYPE_NEW,bats)
+    finally:
+        doc.EndUndo()
     
-    doc.EndUndo()
+
     c4d.EventAdd()
     return
 

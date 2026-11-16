@@ -34,8 +34,8 @@ O_DEFAUT = c4d.Vector(2500000.00,0.0,1120000.00)
 
 #exemples de requetes:
 
-#http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.landeskarte-farbe-10&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
-#http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.images-swissimage&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
+#https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.landeskarte-farbe-10&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
+#https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.images-swissimage&STYLES=default&CRS=EPSG:2056&BBOX=2569660.0,1228270.0,2578660.0,1233270.0&WIDTH=900&HEIGHT=500&FORMAT=image/png
 
 FORMAT = 'png'
 
@@ -51,6 +51,9 @@ def empriseVueHaut(bd,origine):
     maxi = bd.SW(c4d.Vector(largeur,0,0)) + origine
 
     return  mini,maxi,largeur,hauteur
+
+_generated_images = set()
+
 
 def display_wms_swisstopo(layer):
     
@@ -90,7 +93,7 @@ def display_wms_swisstopo(layer):
     
     #pour le format de la date regarder : https://docs.python.org/fr/3/library/datetime.html#strftime-strptime-behavior
     dt = datetime.now()
-    suffixe_time = dt.strftime("%y%m%d_%H%M%S")
+    suffixe_time = dt.strftime("%y%m%d_%H%M%S_%f")
 
     fn = f'ortho{suffixe_time}.png'
     fn_img = os.path.join(dossier_img,fn)
@@ -102,23 +105,24 @@ def display_wms_swisstopo(layer):
     #print (mini.x,mini.z,maxi.x,maxi.z)
     bbox = f'{mini.x},{mini.z},{maxi.x},{maxi.z}'
     
-    url = f'http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
+    url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
     #print(url)
     
     
     
     try:
-        x = urllib.request.urlopen(url)
-    
-        with open(fn_img,'wb') as saveFile:
-            saveFile.write(x.read())
-            
-    except Exception as e:
-        print(str(e))
-        
-    #on récupère l'ancienne image
-    old_fn = os.path.join(dossier_img,bd[c4d.BASEDRAW_DATA_PICTURE])
+        with urllib.request.urlopen(url, timeout=30) as response:
+            image = response.read()
+        if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("Le service WMS n’a pas renvoyé une image PNG.")
+        with open(fn_img, "xb") as output:
+            output.write(image)
+    except (OSError, ValueError) as error:
+        c4d.gui.MessageDialog(f"Image swisstopo indisponible : {error}")
+        return
 
+    old_fn = os.path.join(dossier_img, bd[c4d.BASEDRAW_DATA_PICTURE] or "")
+    _generated_images.add(fn_img)
     bd[c4d.BASEDRAW_DATA_PICTURE] = fn
     bd[c4d.BASEDRAW_DATA_SIZEX] = maxi.x-mini.x
     bd[c4d.BASEDRAW_DATA_SIZEY] = maxi.z-mini.z
@@ -128,11 +132,15 @@ def display_wms_swisstopo(layer):
     bd[c4d.BASEDRAW_DATA_OFFSETY] = (maxi.z+mini.z)/2-origine.z
     #bd[c4d.BASEDRAW_DATA_SHOWPICTURE] = False
 
-    #suppression de l'ancienne image
-    #TODO : s'assurer que c'est bien une image générée NE PAS SUPPRIMER N'IMPORTE QUOI !!!
-    if os.path.exists(old_fn):
-        try : os.remove(old_fn)
-        except : pass
+    if old_fn in _generated_images and old_fn != fn_img:
+        try:
+            os.remove(old_fn)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            print(f"Ancienne image conservée : {error}")
+        else:
+            _generated_images.discard(old_fn)
     c4d.EventAdd(c4d.EVENT_FORCEREDRAW)
     
 

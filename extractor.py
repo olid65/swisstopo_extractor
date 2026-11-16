@@ -357,8 +357,8 @@ class DlgBbox(c4d.gui.GeDialog):
     LABEL_MNT2M = "MNT 2m"
     LABEL_MNT50CM = "MNT 50cm"
     LABEL_MNS = "MNS (modèle numérique de surface)"
-    LABEL_BATI3D = "Bâtiments 3D"
-    LABEL_BATI3D_V3 = "Bâtiments 3D v3 (print 3D)"
+    LABEL_BATI3D = "Bâtiments 3D v2"
+    LABEL_BATI3D_V3 = "Bâtiments 3D v3 beta (print 3D)"
     LABEL_TREES = "Arbres isolés"
     LABEL_FOREST = "Cordons boisés et forêts"
 
@@ -519,8 +519,9 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_MNT50CM, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_MNT50CM)
         self.GroupEnd()
 
-        self.GroupBegin(602, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.GroupBegin(602, flags=c4d.BFH_LEFT, cols=3, rows=1)
         
+        self.AddStaticText(0, c4d.BFH_LEFT, name="Maille (m)")
         self.AddEditNumber(self.ID_TAILLE_MAILLE_MNT, flags=c4d.BFH_LEFT, initw=100, inith=15)
         self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNT, flags=c4d.BFH_MASK, initw=200, inith=15, name='nb p. MNT', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         self.GroupEnd()
@@ -529,19 +530,20 @@ class DlgBbox(c4d.gui.GeDialog):
         self.AddCheckbox(self.CHECKBOX_MNS, flags=c4d.BFH_LEFT, initw=300, inith=20, name=self.LABEL_MNS)
         self.GroupEnd()
 
-        self.GroupBegin(604, flags=c4d.BFH_LEFT, cols=2, rows=1)
+        self.GroupBegin(604, flags=c4d.BFH_LEFT, cols=3, rows=1)
+        self.AddStaticText(0, c4d.BFH_LEFT, name="Maille (m)")
         self.AddEditNumber(self.ID_TAILLE_MAILLE_MNS, flags=c4d.BFH_LEFT, initw=100, inith=15)
         self.AddStaticText(self.ID_TXT_NBRE_POLYS_MNS, flags=c4d.BFH_MASK, initw=200, inith=15, name='nb p. MNS', borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
         self.GroupEnd()
 
         self.GroupBegin(606, flags=c4d.BFH_LEFT, cols=2, rows=1)
-        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_LEFT, initw=150, inith=20, name=self.LABEL_BATI3D)
-        self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=150, inith=20, name=self.LABEL_BATI3D_V3)
+        self.AddCheckbox(self.CHECKBOX_BATI3D, flags=c4d.BFH_LEFT, initw=0, inith=20, name=self.LABEL_BATI3D)
+        self.AddCheckbox(self.CHECKBOX_BATI3D_V3, flags=c4d.BFH_MASK, initw=0, inith=20, name=self.LABEL_BATI3D_V3)
         self.GroupEnd()
 
         self.GroupBegin(607, flags=c4d.BFH_SCALEFIT, cols=1, rows=2)
         self.GroupBegin(0, flags=c4d.BFH_LEFT, cols=2, rows=1)
-        self.AddCheckbox(self.ORTHO_ENABLED, c4d.BFH_LEFT, initw=150, inith=20, name="Orthophoto (cm/pixel)")
+        self.AddCheckbox(self.ORTHO_ENABLED, c4d.BFH_LEFT, initw=280, inith=20, name="Orthophoto (cm/pixel)")
         self.AddEditNumberArrows(self.ORTHO_RESOLUTION, c4d.BFH_LEFT, initw=65)
         self.GroupEnd()
         self.GroupBegin(0, flags=c4d.BFH_SCALEFIT, cols=1, rows=1)
@@ -623,9 +625,9 @@ class DlgBbox(c4d.gui.GeDialog):
         self.refresh_ortho_dimensions()
         self.SetBool(self.CHECKBOX_TREES,True)
         self.SetBool(self.CHECKBOX_FOREST,True)
-        self.SetMeter(self.ID_TAILLE_MAILLE_MNT, 2.0)
+        self.SetFloat(self.ID_TAILLE_MAILLE_MNT, 2.0)
         self.taille_maille_mnt = 2.0
-        self.SetMeter(self.ID_TAILLE_MAILLE_MNS, 0.5)
+        self.SetFloat(self.ID_TAILLE_MAILLE_MNS, 0.5)
         self.taille_maille_mns = 0.5
 
         self.SetString(self.ID_TXT_NBRE_POLYS_MNT,self.TXT_NO_SURFACE)
@@ -955,7 +957,7 @@ class DlgBbox(c4d.gui.GeDialog):
             if self.GetBool(self.CHECKBOX_MNT50CM):
                 self.SetBool(self.CHECKBOX_MNT50CM,False)
             self.taille_maille_mnt = 2
-            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
+            self.SetFloat(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
             self.taille_maille_mnt = 2
             self.majNombresPolys(mnt=True)
 
@@ -965,7 +967,7 @@ class DlgBbox(c4d.gui.GeDialog):
             if self.GetBool(self.CHECKBOX_MNT2M):
                 self.SetBool(self.CHECKBOX_MNT2M,False)
             self.taille_maille_mnt = 0.5
-            self.SetMeter(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
+            self.SetFloat(self.ID_TAILLE_MAILLE_MNT,self.taille_maille_mnt)
             self.majNombresPolys(mnt=True)
 
         if id == self.CHECKBOX_MNS:
@@ -983,12 +985,12 @@ class DlgBbox(c4d.gui.GeDialog):
         #CHANGEMENT TAILLE DE LA MAILLE MNT
         if id==self.ID_TAILLE_MAILLE_MNT:
             self.taille_maille_mnt = self.GetFloat(self.ID_TAILLE_MAILLE_MNT)
+            if self.taille_maille_mnt < 0.5:
+                self.taille_maille_mnt = 0.5
+                self.SetFloat(self.ID_TAILLE_MAILLE_MNT, 0.5)
             if self.taille_maille_mnt >=2 :
                 self.SetBool(self.CHECKBOX_MNT2M,True)
                 self.SetBool(self.CHECKBOX_MNT50CM,False)
-            elif self.taille_maille_mnt <0.5 :
-                self.SetMeter(self.ID_TAILLE_MAILLE_MNT,0.5)
-                self.taille_maille_mnt = 0.5
             else:
                 self.SetBool(self.CHECKBOX_MNT2M,False)
                 self.SetBool(self.CHECKBOX_MNT50CM,True)
@@ -999,8 +1001,8 @@ class DlgBbox(c4d.gui.GeDialog):
         if id==self.ID_TAILLE_MAILLE_MNS:
             self.taille_maille_mns = self.GetFloat(self.ID_TAILLE_MAILLE_MNS)
             if self.taille_maille_mns <0.5 :
-                self.SetMeter(self.ID_TAILLE_MAILLE_MNS,0.5)
-                self.taille_maille_mnt = 0.5
+                self.SetFloat(self.ID_TAILLE_MAILLE_MNS,0.5)
+                self.taille_maille_mns = 0.5
 
             self.majNombresPolys(mnt = False)
 

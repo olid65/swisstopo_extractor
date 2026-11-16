@@ -1,3 +1,4 @@
+from pathlib import Path
 import tempfile
 from typing import Optional
 import c4d
@@ -63,95 +64,165 @@ def get_swissbuildings3D_v3_gdbs(path):
     return lst_gdb
 
 
-def gdbs2shp(lst_gdbs,path_to_ogr2ogr,xmin,zmin,xmax,zmax)->str:
-    #conversion GDB->SHP
-    #renvoie le chemin du dossier contenant les dossiers contenant les shapefiles
-    if not lst_gdbs:
+SURFACES = (("Floor", "sols"), ("Wall", "facades"), ("Roof", "toits"))
+
+
+def shape_directories(databases, ogr, bounds):
+    """Cache the spatially filtered conversion for precisely this extent."""
+    layers = ["Building_solid"] + [name for name, _ in SURFACES]
+    for database in sorted(databases or []):
+        parent = Path(database).parent / "shapefiles" / Path(database).stem
+        parent.mkdir(parents=True, exist_ok=True)
+        extent = "_".join(map(str, bounds))
+        directory = parent / extent
+        if not directory.is_dir():
+            with tempfile.TemporaryDirectory(dir=parent) as staging:
+                output = Path(staging) / "shapes"
+                subprocess.run([ogr, "-f", "ESRI Shapefile", "-spat", *map(str, bounds),
+                                str(output), database, *layers], check=True)
+                for layer in layers:
+                    if not (output / (layer + ".shp")).is_file():
+                        raise ValueError(f"Couche absente de la conversion : {layer}")
+                os.rename(output, directory)
+        yield directory
+
+
+def patch_faces(shape):
+    ends = list(shape.parts[1:]) + [len(shape.points)]
+    if shape.shapeType == shp.POLYGONZ:
+        # OGR may encode triangulated surface patches as closed PolygonZ rings.
+        # Unlike MultiPatch records, PolygonZ records have no part-type array.
+        for start, end in zip(shape.parts, ends):
+            if shape.points[start] == shape.points[end-1] and shape.z[start] == shape.z[end-1]:
+                end -= 1
+            if end - start != 3:
+                raise ValueError("Une face PolygonZ non triangulée a été rencontrée.")
+            yield start, start+1, start+2
+        return
+    if shape.shapeType != shp.MULTIPATCH:
+        raise ValueError(f"Type de géométrie 3D non pris en charge : {shape.shapeType}")
+    for start, end, kind in zip(shape.parts, ends, shape.partTypes):
+        if kind == shp.TRIANGLE_STRIP:
+            for i in range(start, end-2):
+                yield (i+1, i, i+2) if (i-start) % 2 else (i, i+1, i+2)
+        elif kind == shp.TRIANGLE_FAN:
+            for i in range(start+1, end-1):
+                yield start, i, i+1
+        else:
+            if shape.points[start] == shape.points[end-1] and shape.z[start] == shape.z[end-1]:
+                end -= 1
+            if kind in (shp.INNER_RING, shp.RING) or end-start > 4:
+                raise ValueError("MultiPatch non triangulé dans les données swissBUILDINGS3D.")
+            if end-start >= 3:
+                yield tuple(range(start, end))
+
+
+class Mesh:
+    def __init__(self):
+        self.vertices = []
+        self.indices = {}
+        self.faces = []
+        self.selections = {}
+
+    def add(self, vertices, label=None):
+        indices = []
+        for point in vertices:
+            key = (point.x, point.y, point.z)
+            index = self.indices.get(key)
+            if index is None:
+                index = len(self.vertices)
+                self.indices[key] = index
+                self.vertices.append(point)
+            indices.append(index)
+        if len(set(indices)) < 3:
+            return
+        if label is not None:
+            self.selections.setdefault(label, []).append(len(self.faces))
+        self.faces.append(c4d.CPolygon(*indices))
+
+    def read(self, filename, origin, label=None):
+        with shp.Reader(str(filename)) as reader:
+            for shape in reader.iterShapes():
+                if not shape.points:
+                    continue
+                vertices = [c4d.Vector(x, h, y) - origin
+                            for (x, y), h in zip(shape.points, shape.z)]
+                for face in patch_faces(shape):
+                    self.add((vertices[i] for i in face), label)
+
+    def object(self, name, labels=()):
+        result = c4d.PolygonObject(len(self.vertices), len(self.faces))
+        result.SetName(name)
+        result.SetAllPoints(self.vertices)
+        for i, face in enumerate(self.faces):
+            result.SetPolygon(i, face)
+        for label in labels:
+            tag = result.MakeTag(c4d.Tpolygonselection)
+            tag.SetName(label)
+            selection = tag.GetBaseSelect()
+            for i in self.selections.get(label, ()):
+                selection.Select(i)
+        result.Message(c4d.MSG_UPDATE)
+        return result
+
+
+def clip_mesh(source, volume, labels):
+    """Keep source selections on clipped faces. Only the solid gets cut caps."""
+    if not source.GetPolygonCount():
+        return source
+    temp = c4d.documents.BaseDocument()
+    boolean = c4d.BaseObject(c4d.Oboole)
+    boolean[c4d.BOOLEOBJECT_TYPE] = c4d.BOOLEOBJECT_TYPE_INTERSECT
+    boolean[c4d.BOOLEOBJECT_HIGHQUALITY] = False
+    source.InsertUnder(boolean)
+    volume.GetClone().InsertUnderLast(boolean)
+    temp.InsertObject(boolean)
+    evaluated = temp.Polygonize()
+    if evaluated is None:
+        raise RuntimeError("Impossible de découper les bâtiments v3.")
+    mesh = Mesh()
+    stack = [evaluated.GetFirstObject()]
+    while stack:
+        obj = stack.pop()
+        if obj is None:
+            continue
+        stack.extend(reversed(obj.GetChildren()))
+        if not isinstance(obj, c4d.PolygonObject):
+            continue
+        groups = {t.GetName(): t.GetBaseSelect() for t in obj.GetTags()
+                  if t.CheckType(c4d.Tpolygonselection) and t.GetName() in labels}
+        vertices = [obj.GetMg() * p for p in obj.GetAllPoints()]
+        for i, face in enumerate(obj.GetAllPolygons()):
+            label = next((key for key, sel in groups.items() if sel.IsSelected(i)), None)
+            if labels and label is None:
+                continue
+            ids = (face.a, face.b, face.c) if face.c == face.d else (face.a, face.b, face.c, face.d)
+            mesh.add((vertices[k] for k in ids), label)
+    return mesh.object(source.GetName(), labels)
+
+
+def importSwissBuildings(path, doc, cube_mnt, xmin, zmin, xmax, zmax):
+    qgis = getPathToQGISbin()
+    ogr = ogrBIN_OK(qgis) if qgis else None
+    if not ogr:
+        raise RuntimeError("L’outil ogr2ogr est introuvable dans le dossier de QGIS.")
+    databases = get_swissbuildings3D_v3_gdbs(path)
+    if not databases:
         raise ValueError("Aucune géodatabase SwissBuildings3D à convertir.")
-    for fn_gdb in lst_gdbs:
-        pth_shapefile = os.path.join(os.path.dirname(fn_gdb),'shapefiles')
-        if not os.path.isdir(pth_shapefile):
-            os.mkdir(pth_shapefile)
-        dir_shp = os.path.join(pth_shapefile,os.path.basename(fn_gdb[:-4]))
-        #on convertit uniquement si le dossier n'existe pas
-        if not os.path.isdir(dir_shp):
-            # Publier la conversion complète pour permettre une reprise après erreur.
-            with tempfile.TemporaryDirectory(dir=pth_shapefile) as staging:
-                output = os.path.join(staging, "shapes")
-                os.mkdir(output)
-                subprocess.run([path_to_ogr2ogr, "-spat", *map(str, (xmin, zmin, xmax, zmax)),
-                                output, fn_gdb], check=True)
-                os.rename(output, dir_shp)
-    return pth_shapefile
-
-
-############################################################################################################
-#IMPORT SHAPEFILES
-############################################################################################################
-
-def listdirectory2(path):
-    fichier=[]
-    for root, dirs, files in os.walk(path):
-        for i in files:
-            #print(i)
-            if i == 'Building_solid.shp':
-                fichier.append(os.path.join(root, i))
-    return fichier
-
-def import_swissbuildings3D_v3_shape(fn,doc):
-    res = c4d.BaseObject(c4d.Onull)
-    #pour le nom on donne le nom du dossier parent
-    res.SetName(os.path.basename(os.path.dirname(fn)))
-    r = shp.Reader(fn)
-
-    xmin,ymin,xmax,ymax = r.bbox
-    centre = c4d.Vector((xmin+xmax)/2,0,(ymax+ymin)/2)
-
+    solid, surfaces = Mesh(), Mesh()
     origin = doc[CONTAINER_ORIGIN]
-    if not origin :
-        doc[CONTAINER_ORIGIN] = centre
-        origin = centre
+    bounds = (xmin, zmin, xmax, zmax)
+    for directory in shape_directories(databases, ogr, bounds):
+        solid.read(directory / "Building_solid.shp", origin)
+        for layer, label in SURFACES:
+            surfaces.read(directory / (layer + ".shp"), origin, label)
+    labels = [label for _, label in SURFACES]
+    visible = clip_mesh(surfaces.object(NAME_SWISSBUILDINGS3D_V3, labels), cube_mnt, labels)
+    hidden = clip_mesh(solid.object(NAME_SWISSBUILDINGS3D_V3 + "_solid"), cube_mnt, ())
+    hidden[c4d.ID_BASEOBJECT_VISIBILITY_EDITOR] = c4d.OBJECT_OFF
+    hidden[c4d.ID_BASEOBJECT_VISIBILITY_RENDER] = c4d.OBJECT_OFF
+    return visible, hidden
 
-
-    # géométries
-    shapes = r.shapes()
-
-    nbre = 0
-    for shape in shapes:
-        xs = [x for x,y in shape.points]
-        zs = [y for x,y in shape.points]
-        ys = [z for z in shape.z]
-
-        #pour l'axe on prend la moyenne de x et z et le min de y auquel on ajoute 3m
-        #car les bati swisstopo rajoute 3m sous le point le plus bas du MNT
-        #comme ça on peut modifier l'échelle des hauteurs
-        axe = c4d.Vector((min(xs)+max(xs))/2,min(ys)+3,(min(zs)+max(zs))/2)
-
-        pts = [c4d.Vector(x,z,y)-axe for (x,y),z in zip(shape.points,shape.z)]
-
-        nb_pts = len(pts)
-        polys = []
-
-        pred = 0
-        for i in shape.parts:
-            if pred:
-                nb_pts_poly = i-pred
-
-            poly = c4d.CPolygon(i,i+1,i+2,i+3)
-            polys.append(poly)
-            pred = i
-
-
-        po =c4d.PolygonObject(nb_pts,len(polys))
-        #TODO : tag phong !
-        po.SetAllPoints(pts)
-        for i,poly in enumerate(polys):
-            po.SetPolygon(i,poly)
-
-        po.SetAbsPos(axe-origin)
-        po.Message(c4d.MSG_UPDATE)
-        po.InsertUnderLast(res)
-    return res
 
 def empriseObject(obj, origine):
     geom = obj
@@ -176,227 +247,6 @@ def empriseObject(obj, origine):
 
     return xmin,zmin,xmax,zmax
 
-############################################################################################################
-#FERMETURE DES TROUS
-############################################################################################################
-def selectContour(op):
-    res = False
-
-    nb = c4d.utils.Neighbor()
-    nb.Init(op)
-    bs = op.GetSelectedEdges(nb,c4d.EDGESELECTIONTYPE_SELECTION)
-    bs.DeselectAll()
-    for i,poly in enumerate(op.GetAllPolygons()):
-        inf = nb.GetPolyInfo(i)
-        if nb.GetNeighbor(poly.a, poly.b, i)==-1:
-            bs.Select(inf['edge'][0])
-
-        if nb.GetNeighbor(poly.b, poly.c, i)==-1:
-            bs.Select(inf['edge'][1])
-
-
-        #si pas triangle
-        if not poly.c == poly.d :
-            if nb.GetNeighbor(poly.c, poly.d, i)==-1:
-                bs.Select(inf['edge'][2])
-                res = True
-        if nb.GetNeighbor(poly.d, poly.a, i)==-1:
-            bs.Select(inf['edge'][3])
-            res = True
-
-    op.SetSelectedEdges(nb,bs,c4d.EDGESELECTIONTYPE_SELECTION)
-    return res
-
-def closePolys(op,doc):
-    doc.SetMode(c4d.Medges)
-    nbr = c4d.utils.Neighbor()
-    nbr.Init(op)
-    vcnt = op.GetPolygonCount()
-    settings = c4d.BaseContainer()
-    settings[c4d.MDATA_CLOSEHOLE_INDEX] = op
-    doc.AddUndo(c4d.UNDO_CHANGE,op)
-
-    for i in range(0,vcnt):
-        vadr = op.GetPolygon(i)
-        pinf = nbr.GetPolyInfo(i)
-        if nbr.GetNeighbor(vadr.a, vadr.b, i) == c4d.NOTOK:
-            settings[c4d.MDATA_CLOSEHOLE_EDGE] = pinf["edge"][0]
-            c4d.utils.SendModelingCommand(command = c4d.ID_MODELING_CLOSEHOLE_TOOL, list = [op], mode = c4d.MODELINGCOMMANDMODE_EDGESELECTION, bc = settings, doc = doc)
-            nbr.Init(op)
-        if nbr.GetNeighbor(vadr.b, vadr.c, i) == c4d.NOTOK:
-            settings[c4d.MDATA_CLOSEHOLE_EDGE] = pinf["edge"][1]
-            c4d.utils.SendModelingCommand(command = c4d.ID_MODELING_CLOSEHOLE_TOOL, list = [op], mode = c4d.MODELINGCOMMANDMODE_EDGESELECTION, bc = settings, doc = doc)
-            nbr.Init(op)
-        if vadr.c != vadr.d and nbr.GetNeighbor(vadr.c, vadr.d, i) == c4d.NOTOK:
-            settings[c4d.MDATA_CLOSEHOLE_EDGE] = pinf["edge"][2]
-            c4d.utils.SendModelingCommand(command = c4d.ID_MODELING_CLOSEHOLE_TOOL, list = [op], mode = c4d.MODELINGCOMMANDMODE_EDGESELECTION, bc = settings, doc = doc)
-            nbr.Init(op)
-        if nbr.GetNeighbor(vadr.d, vadr.a, i) == c4d.NOTOK:
-            settings[c4d.MDATA_CLOSEHOLE_EDGE] = pinf["edge"][3]
-            c4d.utils.SendModelingCommand(command = c4d.ID_MODELING_CLOSEHOLE_TOOL, list = [op], mode = c4d.MODELINGCOMMANDMODE_EDGESELECTION, bc = settings, doc = doc)
-            nbr.Init(op)
-
-
-def triangulate(lst_objs,doc):
-    doc.SetMode(c4d.Mpolygons)
-    settings = c4d.BaseContainer()  # Settings
-    res = c4d.utils.SendModelingCommand(command=c4d.MCOMMAND_TRIANGULATE,
-                                    list=lst_objs,
-                                    mode=c4d.MODELINGCOMMANDMODE_ALL,
-                                    bc=settings,
-                                    doc=doc)
-
-def untriangulate(lst_objs,doc):
-    doc.SetMode(c4d.Mpolygons)
-    settings = c4d.BaseContainer()  # Settings
-    settings[c4d.MDATA_UNTRIANGULATE_NGONS] = True
-    settings[c4d.MDATA_UNTRIANGULATE_ANGLE_RAD] = c4d.utils.Rad(0.1)
-
-    res = c4d.utils.SendModelingCommand(command=c4d.MCOMMAND_UNTRIANGULATE,
-                                    list=lst_objs,
-                                    mode=c4d.MODELINGCOMMANDMODE_ALL,
-                                    bc=settings,
-                                    doc=doc)
-
-
-def importSwissBuildings(path, doc, cube_mnt,xmin,zmin,xmax,zmax):
-    #emprise objet
-    origine = doc[CONTAINER_ORIGIN]
-    #xmin,zmin,xmax,zmax = empriseObject(cube_mnt, origine)
-
-    #nouveau doc pour Polygonize
-    doc = c4d.documents.BaseDocument()
-    #document en mètre
-    usdata = doc[c4d.DOCUMENT_DOCUNIT]
-    scale, unit = usdata.GetUnitScale()
-    if  unit!= c4d.DOCUMENT_UNIT_M:
-        #rep = c4d.gui.QuestionDialog(DOC_NOT_IN_METERS_TXT)
-        #if not rep : return
-        unit = c4d.DOCUMENT_UNIT_M
-        usdata.SetUnitScale(scale, unit)
-        doc[c4d.DOCUMENT_DOCUNIT] = usdata
-    #doc = c4d.documents.LoadDocument('temp', c4d.SCENEFILTER_NONE, thread=None)
-
-    doc[CONTAINER_ORIGIN] = origine
-
-    ##################################################################
-    #OGR2OGR transformation des gdb en shp
-    #TODO : inclure dans un Thread avec toutes les opérations GDAL/OGR
-    ##################################################################
-
-    #chemin pour ogr2ogr
-    path_to_QGISbin = getPathToQGISbin()
-    if not path_to_QGISbin:
-        raise RuntimeError("Le dossier de QGIS est introuvable.")
-
-    #on vérifie que ogr2ogr est bien là
-    path_to_ogr2ogr = ogrBIN_OK(path_to_QGISbin)
-    if not path_to_ogr2ogr:
-        raise RuntimeError("L’outil ogr2ogr est introuvable dans le dossier de QGIS.")
-
-    lst_gdbs = get_swissbuildings3D_v3_gdbs(path)
-
-    #TODO si on n'a pas de gdb ???'
-    #print(lst_gdbs)
-    path_shapefiles = gdbs2shp(lst_gdbs,path_to_ogr2ogr,xmin,zmin,xmax,zmax)
-
-
-    ###########################################################
-    #Import shapefiles
-    ###############################################
-
-    onull_bat = c4d.BaseObject(c4d.Onull)
-    onull_bat.SetName(NAME_SWISSBUILDINGS3D_V3)
-
-    for fn in listdirectory2(path_shapefiles):
-        res = import_swissbuildings3D_v3_shape(fn,doc)
-        res.InsertUnderLast(onull_bat)
-    doc.InsertObject(onull_bat)
-
-
-    #OPTIMISATION, fermeture des trous, et mise en rouge si pas ok
-
-    for onull in onull_bat.GetChildren():
-
-        #OPTIMIZE POINTS
-        settings = c4d.BaseContainer()  # Settings
-        settings[c4d.MDATA_OPTIMIZE_TOLERANCE] = 0.1
-        settings[c4d.MDATA_OPTIMIZE_POINTS] = True
-        settings[c4d.MDATA_OPTIMIZE_POLYGONS] = True
-        settings[c4d.MDATA_OPTIMIZE_UNUSEDPOINTS] = True
-
-
-
-        res = c4d.utils.SendModelingCommand(command=c4d.MCOMMAND_OPTIMIZE,
-                                        list=[o for o in onull.GetChildren()],
-                                        mode=c4d.MODELINGCOMMANDMODE_POLYGONSELECTION,
-                                        bc=settings,
-                                        doc=doc)
-
-        for o in onull.GetChildren():
-            #on ferme d'abord les polygones'
-            closePolys(o,doc)
-            #si on a encore des edges contour on met l'objet en rouge
-            if selectContour(o):
-                o[c4d.ID_BASEOBJECT_USECOLOR] = c4d.ID_BASEOBJECT_USECOLOR_ALWAYS
-                o[c4d.ID_BASEOBJECT_COLOR] = c4d.Vector(1,0,0)
-                #icone
-                o[c4d.ID_BASELIST_ICON_COLORIZE_MODE] =c4d.ID_BASELIST_ICON_COLORIZE_MODE_CUSTOM
-                o[c4d.ID_BASELIST_ICON_COLOR]= c4d.Vector(1,0,0)
-                #on le met en haut de la hierarchie
-                o.InsertUnder(onull)
-            else:
-                o[c4d.ID_BASEOBJECT_USECOLOR] = c4d.ID_BASEOBJECT_USECOLOR_OFF
-                o[c4d.ID_BASELIST_ICON_COLORIZE_MODE] =c4d.ID_BASELIST_ICON_COLORIZE_MODE_NONE
-
-    ##################################
-    #DECOUPAGE BOOLEEN
-    ##################################
-    boole = c4d.BaseObject(c4d.Oboole)
-    boole.SetName(NAME_SWISSBUILDINGS3D_V3)
-    boole[c4d.BOOLEOBJECT_HIGHQUALITY] = False
-    boole[c4d.BOOLEOBJECT_TYPE] = c4d.BOOLEOBJECT_TYPE_INTERSECT
-
-    cube_mnt.InsertUnder(boole)
-
-    onull_bat.InsertUnder(boole)
-
-    doc.InsertObject(boole)
-
-    doc_poly = doc.Polygonize()
-    
-    parent_bat = doc_poly.GetFirstObject().GetDown()
-    ###############
-    #Fermeture des trous
-
-    for ssobj in parent_bat.GetChildren():
-        for o in ssobj.GetChildren():
-            closePolys(o,doc)
-    
-            
-    lst_polyobjs = getPolygonObjects(parent_bat,lst = [], stop = parent_bat)
-    #print(len(lst_polyobjs))
-    triangulate(lst_polyobjs,doc_poly)
-    untriangulate(lst_polyobjs,doc_poly)
-    res = parent_bat.GetClone()
-    c4d.documents.KillDocument(doc)
-    c4d.documents.KillDocument(doc_poly)
-    
-    return res
-    
-
-def getPolygonObjects(obj,lst=None, stop = None):
-    if lst is None:
-        lst = []
-    while obj:
-        if obj.CheckType(c4d.Opolygon):
-            lst.append(obj)
-        lst = getPolygonObjects(obj.GetDown(),lst = lst, stop = stop)
-        if obj == stop : return lst
-        obj = obj.GetNext()
-    return lst
-
-
 def main() -> None:
 
     doc = c4d.documents.GetActiveDocument()
@@ -418,8 +268,9 @@ def main() -> None:
         return
     doc.StartUndo()
     try:
-        doc.InsertObject(bats)
-        doc.AddUndo(c4d.UNDOTYPE_NEW,bats)
+        for obj in bats:
+            doc.InsertObject(obj)
+            doc.AddUndo(c4d.UNDOTYPE_NEW, obj)
     finally:
         doc.EndUndo()
     

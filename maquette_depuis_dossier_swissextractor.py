@@ -552,7 +552,6 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
     
     if mns:
         stage("Préparation du MNS")
-        taille_maille_mns = 0.5
         pth_tuiles_mns = os.path.join(pth,DIRNAME_MNS)
         if os.path.isdir(pth_tuiles_mns):
             #VRT
@@ -727,12 +726,12 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
             stage("Import du Bâti3D v3")
             if spline_decoupe:
                 volume_decoupe = utils.cut_obj_from_spline.volumeFromSpline(spline_decoupe)
-                buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
+                buildings_v3, buildings_solid = swissbuildings3D_v3.importSwissBuildings(pth, doc, volume_decoupe,xmin,ymin,xmax,ymax)
             else:
-                buildings_v3 = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
+                buildings_v3, buildings_solid = swissbuildings3D_v3.importSwissBuildings(pth, doc, cube_mnt,xmin,ymin,xmax,ymax)
         
-            if buildings_v3 :
-                buildings_v3.InsertUnderLast(null_maquette)
+            buildings_v3.InsertUnderLast(null_maquette)
+            buildings_solid.InsertUnderLast(null_maquette)
 
         ###################################
         # ARBRES
@@ -790,13 +789,17 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 tag = gp.creerTagTex(mnt, displayTag = False)
                 tag[c4d.TEXTURETAG_RESTRICTION] = NAME_SELECTION_MNT
 
-            if buildings:
-                #on regarde si il a un geotag
-                if not buildings.GetTag(1026472,0):
-                    tg = gp.creerGeoTag(buildings)
-                tag = gp.creerTagTex(buildings, displayTag = False)
+            for building_mesh in (buildings, buildings_v3):
+                if building_mesh is None:
+                    continue
+                if not building_mesh.GetTag(GEOTAG_ID):
+                    gp.creerGeoTag(building_mesh)
+                tag = gp.creerTagTex(building_mesh, displayTag=False)
                 tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
-        
+                if building_mesh == buildings_v3:
+                    tag.SetPos(~building_mesh.GetMg() * (gp.centre - origine))
+
+
             if trees:
                 #on regarde si il a un geotag
                 if not trees.GetTag(1026472,0):

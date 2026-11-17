@@ -1277,8 +1277,12 @@ class DlgBbox(c4d.gui.GeDialog):
             c4d.gui.MessageDialog(f"Impossible de terminer la maquette : {error}")
 
     def update_download_status(self):
-        nb = self.thread.completed
-        self.SetString(self.ID_TXT_DOWNLOAD_STATUS,f'nombre de fichiers téléchargés : {nb}/{len(self.dwload_lst)}')
+        progress = self.thread.progress
+        if progress:
+            index, destination, action = progress
+            layer = self.download_layers[destination]
+            text = f"{index}/{len(self.thread.jobs)} — {action} · {layer} · {os.path.basename(destination)}"
+            self.SetString(self.ID_TXT_DOWNLOAD_STATUS, text)
 
         #si le thread est terminé on arrête le Timer et on lance la création des vrt
         if not self.thread.IsRunning():

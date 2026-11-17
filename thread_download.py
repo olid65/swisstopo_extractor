@@ -10,7 +10,7 @@ from zipfile import ZipFile
 import c4d
 
 
-def download(url, destination):
+def download(url, destination, on_extract=None):
     target = Path(destination)
     # Le cache ne doit jamais contenir un téléchargement ou une extraction partielle.
     with tempfile.TemporaryDirectory(dir=target.parent) as staging:
@@ -38,6 +38,8 @@ def download(url, destination):
             return
 
         target = target.with_suffix("")
+        if on_extract is not None:
+            on_extract()
         with ZipFile(payload) as archive:
             files = [info for info in archive.infolist() if not info.is_dir()]
             if target.suffix.lower() != ".gdb":
@@ -73,13 +75,20 @@ def download(url, destination):
 class ThreadDownload(c4d.threading.C4DThread):
     def __init__(self, jobs):
         self.jobs = tuple(jobs)
+        self.progress = (1, self.jobs[0][1], "Téléchargement") if self.jobs else None
         self.completed = 0
         self.errors = []
 
     def Main(self):
-        for url, destination in self.jobs:
+        for index, (url, destination) in enumerate(self.jobs, start=1):
+            # Un seul instantané pour que le compteur et le libellé restent synchronisés.
+            self.progress = (index, destination, "Téléchargement")
+
+            def extracting():
+                self.progress = (index, destination, "Décompression")
+
             try:
-                download(url, destination)
+                download(url, destination, on_extract=extracting)
             except Exception as error:
                 self.errors.append((destination, f"{Path(destination).name} — {error}"))
             else:

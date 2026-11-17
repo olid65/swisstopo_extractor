@@ -1,5 +1,9 @@
 
-import c4d,os
+import math
+import os
+import time
+
+import c4d
 
 #be sure to use a unique ID obtained from www.plugincafe.com
 PLUGIN_ID = 1038258
@@ -45,6 +49,8 @@ class SettingsDialog(c4d.gui.SubDialog):
     Dialog to display option in the ToolData, in this case the Sphere size.
     """
     parameters = {}
+    ID_PHASE = 1007
+    ID_DRAG_XRAY = 1103
     ID_RADIO_GRPE = 1006
 
     ID_CHKBOX_XRAY = 1101
@@ -58,16 +64,12 @@ class SettingsDialog(c4d.gui.SubDialog):
     TXT_ROTATION = '  Rotation'
     TXT_SCALE    = '  Echelle'
 
-    TXT_XRAY_NAME = '  Transparent'
-    TXT_XRAY_MAT_HIGHDEF = '  Texture haute définition'
+    TXT_XRAY_NAME = 'Transparent'
+    TXT_XRAY_MAT_HIGHDEF = 'Texture haute définition'
 
-    def __init__(self, arg):
-        # Checks if the argument passed is a dictionary
-        if not isinstance(arg, dict):
-            raise TypeError("arg is not a dict.")
-
-        self.parameters = arg
-        
+    def __init__(self, tool):
+        self.tool = tool
+        self.parameters = tool.data
         self.doc = None
         self.obj = None
 
@@ -78,20 +80,10 @@ class SettingsDialog(c4d.gui.SubDialog):
         self.doc = c4d.documents.GetActiveDocument()
         self.obj = self.doc.GetActiveObject()
 
-        self.bc = self.doc[PLUGIN_ID]
-        #on récupère les données dans le doc
-        if self.bc :
-            pass
-
-        # sinon on récupère les données par défaut
-        # et on crée un nouveau BaseContainer dans le doc
-        else:
-            pass
-
-        # Creates a Group to align 2 items
+        self.AddStaticText(self.ID_PHASE, c4d.BFH_SCALEFIT, name=self.phase_label())
         if self.GroupBegin(id=1000, flags=c4d.BFH_SCALEFIT, cols=1, rows=1):
             self.GroupBorderSpace(10, 10, 10, 10)
-            self.AddRadioGroup(self.ID_RADIO_GRPE, flags=0, columns=1, rows=3)
+            self.AddRadioGroup(self.ID_RADIO_GRPE, flags=c4d.BFH_LEFT, columns=1, rows=3)
 
             self.AddChild(self.ID_RADIO_GRPE, self.MODE_ROTATION_SCALE, self.TXT_ROTATION_SCALE)
             self.AddChild(self.ID_RADIO_GRPE, self.MODE_ROTATION, self.TXT_ROTATION)
@@ -107,17 +99,25 @@ class SettingsDialog(c4d.gui.SubDialog):
             # self.AddRadioText(2, flags=c4d.BFH_SCALEFIT, initw=80, inith=0, name=self.TXT_ROTATION)
             # self.AddRadioText(3, flags=c4d.BFH_SCALEFIT, initw=80, inith=0, name=self.TXT_SCALE)
 
-        if self.GroupBegin(id=1100, flags=c4d.BFH_SCALEFIT, cols=1, rows=2):
-            #self.GroupBorderSpace(10, 10, 10, 10)
+        if self.GroupBegin(id=1100, flags=c4d.BFH_SCALEFIT, cols=1, rows=0):
+            self.GroupBorderSpace(10, 0, 10, 0)
 
-            self.AddCheckbox(id=self.ID_CHKBOX_XRAY, flags =0, initw=150, inith=20, name = self.TXT_XRAY_NAME)
-            self.AddCheckbox(id=self.ID_CHKBOX_MAT_HIGHDEF, flags =0, initw=150, inith=20, name = self.TXT_XRAY_MAT_HIGHDEF)
+            self.AddCheckbox(id=self.ID_CHKBOX_XRAY, flags=c4d.BFH_LEFT, initw=0, inith=0, name = self.TXT_XRAY_NAME)
+            self.AddCheckbox(self.ID_DRAG_XRAY, c4d.BFH_LEFT, 0, 0,
+                             name="Transparence pendant le glissement")
+            self.SetBool(self.ID_DRAG_XRAY, self.parameters["drag_xray"])
+            self.AddCheckbox(id=self.ID_CHKBOX_MAT_HIGHDEF, flags=c4d.BFH_LEFT, initw=0, inith=0, name = self.TXT_XRAY_MAT_HIGHDEF)
             self.GroupEnd()
 
             self.maj_dlg()
 
-        self.GroupEnd()
         return True
+
+    def phase_label(self):
+        if not self.parameters["phase2"]:
+            return "Phase 1/2 · Déplacement"
+        mode = {1: "Échelle et rotation", 2: "Rotation", 3: "Échelle"}
+        return "Phase 2/2 · " + mode[self.parameters["mode"]]
 
     def Command(self, id, msg):
         """
@@ -132,6 +132,11 @@ class SettingsDialog(c4d.gui.SubDialog):
         # When the user change the Gadget with the ID 1002 (the input number field)
         if id == self.ID_RADIO_GRPE:
             self.parameters['mode'] = self.GetInt32(id=self.ID_RADIO_GRPE)
+            self.SetString(self.ID_PHASE, self.phase_label())
+            c4d.EventAdd()
+
+        if id == self.ID_DRAG_XRAY:
+            self.parameters['drag_xray'] = self.GetBool(id)
 
         if id == self.ID_CHKBOX_XRAY:
             self.obj = self.doc.GetActiveObject()
@@ -150,7 +155,21 @@ class SettingsDialog(c4d.gui.SubDialog):
         return True
     
     
+    def Message(self, msg, result):
+        if (msg.GetId() == c4d.BFM_INPUT
+                and msg.GetInt32(c4d.BFM_INPUT_DEVICE) == c4d.BFM_INPUT_KEYBOARD
+                and msg.GetInt32(c4d.BFM_INPUT_CHANNEL) == c4d.KEY_TAB
+                and not msg.GetInt32(c4d.BFM_INPUT_QUALIFIER)):
+            if msg.GetInt32(c4d.BFM_INPUT_VALUE):
+                self.tool.set_phase(not self.parameters["phase2"])
+            return True
+        return super().Message(msg, result)
+
     def CoreMessage(self, id, msg):
+        if id == PLUGIN_ID:
+            self.SetString(self.ID_PHASE, self.phase_label())
+            return True
+
 
         #pour modifier les paramètre des checkboxes si l'objet a changé
         if id == c4d.EVMSG_CHANGE:
@@ -191,60 +210,48 @@ def move_axis_global(obj, new_axis):
         child.SetMl(mat * child.GetMl())
     obj.SetMg(new_axis)
 
-def getMatrix_v2_vertical(p1,p2, off = c4d.Vector(0), scale = c4d.Vector(1)):
-    #on met y a zero
-    p1.y = 0
-    p2.y = 0
-    v1 = (p2-p1).GetNormalized()*scale.x
-    v2 = c4d.Vector(0,1,0)*scale.y
-    v3 = v1.Cross(v2).GetNormalized()*scale.z
-    
-    return c4d.Matrix(off,v1,v2,v3)
+def redraw_drag():
+    c4d.DrawViews(c4d.DRAWFLAGS_ONLY_ACTIVE_VIEW | c4d.DRAWFLAGS_NO_THREAD |
+                  c4d.DRAWFLAGS_NO_ANIMATION)
 
-######################################################################
-# TOOLDATA
 
 class CalageImage(c4d.plugins.ToolData):
-    """Inherit from ToolData to create your own tool"""
-    mode_scale = False
-
     def __init__(self):
-        self.data = {'mode': 1}
+        self.data = {"mode": 1, "phase2": False, "drag_xray": True}
         self.dlg = None
-        self.obj = None
+
+    def set_phase(self, second):
+        self.data["phase2"] = second
+        c4d.SpecialEventAdd(PLUGIN_ID)
+        if self.dlg is not None:
+            self.dlg.SetString(self.dlg.ID_PHASE, self.dlg.phase_label())
 
     def InitTool(self, doc, data, bt):
-        self._phase2 = False
-        self.pos_axe_virtuel = None
+        self.set_phase(False)
         return True
-       
 
     def KeyboardInput(self, doc, data, bd, win, msg):
-        key = msg.GetLong(c4d.BFM_INPUT_CHANNEL)
-        
-        #avec la touche esc on revient à la phase 1 (déplacement)    
-        if key==c4d.KEY_ESC:
-            self._phase2 = False
-
-        # avec tab on switch d'un mode à l'autre
-        if key ==c4d.KEY_TAB :
-            self._phase2 = not self._phase2
-
-        return False
+        key = msg.GetInt32(c4d.BFM_INPUT_CHANNEL)
+        if key not in (c4d.KEY_ESC, c4d.KEY_TAB):
+            return False
+        self.set_phase(key == c4d.KEY_TAB and not self.data["phase2"])
+        redraw_drag()
+        c4d.EventAdd()
+        return True
 
     def Draw(self, doc, data, bd, bh, bt, flags):
         bd = doc.GetActiveBaseDraw()
         bd.SetMatrix_Screen()
         bd.SetPen(c4d.Vector(0.956862745098039,0.615686274509804,0.231372549019608))
 
-        if self._phase2:
-            mode = self.dlg.parameters['mode']
+        if self.data["phase2"]:
+            mode = self.data['mode']
             
-            if mode == self.dlg.MODE_ROTATION_SCALE:
+            if mode == SettingsDialog.MODE_ROTATION_SCALE:
                 bd.DrawHUDText( 5, 20, "cliquez-glissez pour tourner et mettre à l'échelle l'objet")
-            elif mode == self.dlg.MODE_ROTATION:
+            elif mode == SettingsDialog.MODE_ROTATION:
                 bd.DrawHUDText( 5, 20, "cliquez-glissez pour tourner l'objet")
-            elif mode == self.dlg.MODE_SCALE:
+            elif mode == SettingsDialog.MODE_SCALE:
                 bd.DrawHUDText( 5, 20, "cliquez-glissez pour mettre à l'échelle l'objet")
         else:
             bd.DrawHUDText( 5, 20, "cliquez-glissez pour positionner l'objet")
@@ -283,123 +290,90 @@ class CalageImage(c4d.plugins.ToolData):
 
     def MouseInput(self, doc, data, bd, win, msg):
 
+        buttons = {c4d.BFM_INPUT_MOUSELEFT: c4d.KEY_MLEFT,
+                   c4d.BFM_INPUT_MOUSERIGHT: c4d.KEY_MRIGHT}
+        button = buttons.get(msg[c4d.BFM_INPUT_CHANNEL])
+        op = doc.GetActiveObject()
+        if not button or op is None:
+            return False
+        if not op.CheckType(c4d.Opoint):
+            if c4d.gui.QuestionDialog("Rendre l’objet sélectionné modifiable pour le caler ?"):
+                doc.StartUndo()
+                try:
+                    make_editable(op, doc)
+                finally:
+                    doc.EndUndo()
+                c4d.EventAdd()
+            return True
+
+        x, y = msg[c4d.BFM_INPUT_X], msg[c4d.BFM_INPUT_Y]
+        original = op.GetMg()
+        # Project at the object's depth, including in perspective views.
+        depth = bd.WS(original.off).z
+        start = bd.SW(c4d.Vector(x, y, depth))
+        point = start
+        second = self.data["phase2"]
+        mode = self.data["mode"]
+        arm = start - original.off
+        radius = math.hypot(arm.x, arm.z)
+        if second and radius < 1e-9:
+            return True
+        old_xray = op[c4d.ID_BASEOBJECT_XRAY]
+        temporary = self.data["drag_xray"] and not old_xray
+        last_draw = 0
+        win.MouseDragStart(button, int(x), int(y), c4d.MOUSEDRAGFLAGS_DONTHIDEMOUSE)
         doc.StartUndo()
         try:
-            op = doc.GetActiveObject()
-            if not op : return False
-
-            #si l'objet est paramétrique il faut le rendre éditable
-            if not op.CheckType(c4d.Opoint) :
-                if c4d.gui.QuestionDialog("L'objet sélectionné va être édité, voulez-vous continuer ?"):
-                    op = make_editable(op,doc)
-                    c4d.EventAdd()
-
-                return True
-
-
-            x = msg[c4d.BFM_INPUT_X]
-            y = msg[c4d.BFM_INPUT_Y]
-
-            device = 0
-            if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSELEFT:
-                device = c4d.KEY_MLEFT
-
-            if msg[c4d.BFM_INPUT_CHANNEL]==c4d.BFM_INPUT_MOUSERIGHT:
-                 device = c4d.KEY_MRIGHT
-            ##########################################################################################
-            #Récupération des données souris
-
-            dx = 0.0
-            dy = 0.0
-
-            win.MouseDragStart(button=device, mx=int(x), my=int(y),
-                                     flags=c4d.MOUSEDRAGFLAGS_DONTHIDEMOUSE)
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, op)
             try:
-                result, tx, ty, channel = win.MouseDrag()
-
-                mg = op.GetMg()
-                pos_dprt = mg.off
-                delta = pos_dprt - bd.SW(c4d.Vector(x,y,0))
-
-                doc.AddUndo(c4d.UNDOTYPE_CHANGE,op)
-
-                if self.dlg:
-                    mode = self.dlg.parameters['mode']
-                else:
-                    mode = 1
-
-                if mode == SettingsDialog.MODE_ROTATION_SCALE:
-                    change_rot = True
-                    change_scale = True
-                elif mode == SettingsDialog.MODE_ROTATION:
-                    change_rot = True
-                    change_scale = False
-                if mode == SettingsDialog.MODE_SCALE:
-                    change_rot = False
-                    change_scale = True
-
-                if self._phase2:
-                    #rotation de l'axe lors du second drag
-                    pos_dprt2 = bd.SW(c4d.Vector(x,y,0))
-                    if (pos_dprt2 - mg.off).GetLength() < 1e-9:
-                        return False
-                    matrix = getMatrix_v2_vertical(mg.off,pos_dprt2, mg.off)
-                    move_axis_global(op, matrix)
-                    dist_origin = c4d.Vector.GetDistance(pos_dprt2,matrix.off)
-
-
-                pt = bd.SW(c4d.Vector(x, y, 0))
-                while result==c4d.MOUSEDRAGRESULT_CONTINUE:
-                    dx += tx
-                    dy += ty
-                    result, tx, ty, channel = win.MouseDrag()
-                    pt = bd.SW(c4d.Vector(x+dx,y+dy,0))
-                    pos = pt +delta
-
-                    if self._phase2:
-                        dist = c4d.Vector.GetDistance(pt,matrix.off)
-                        if change_scale:
-                            scale = c4d.Vector(dist/dist_origin)
-                        else:
-                            scale = c4d.Vector(1)
-
-                        if change_rot :
-                            new_m = getMatrix_v2_vertical(matrix.off, pt, matrix.off, scale)
-                        else:
-                            new_m = c4d.Matrix()
-                            new_m.off = matrix.off
-                            new_m.v1 = matrix.v1*scale.x
-                            new_m.v2 = matrix.v2*scale.x
-                            new_m.v3 = matrix.v3*scale.x
-
-                        op.SetMg(new_m)
-
-                    else :
-                        mg.off = pos
-                        op.SetMg(mg)
-
-                    c4d.DrawViews(c4d.DRAWFLAGS_FORCEFULLREDRAW,bd)
-                    c4d.EventAdd()
+                if temporary:
+                    op[c4d.ID_BASEOBJECT_XRAY] = True
+                    redraw_drag()
+                while True:
+                    result, dx, dy, _ = win.MouseDrag()
+                    if result != c4d.MOUSEDRAGRESULT_CONTINUE:
+                        break
+                    if not (dx or dy):
+                        continue
+                    x += dx
+                    y += dy
+                    point = bd.SW(c4d.Vector(x, y, depth))
+                    matrix = c4d.Matrix(original)
+                    if second:
+                        direction = point - original.off
+                        length = math.hypot(direction.x, direction.z)
+                        if length < 1e-9:
+                            continue
+                        scale = length/radius if mode != SettingsDialog.MODE_ROTATION else 1
+                        angle = (math.atan2(arm.x, arm.z) - math.atan2(direction.x, direction.z)
+                                 if mode != SettingsDialog.MODE_SCALE else 0)
+                        rotation = c4d.utils.MatrixRotY(angle)
+                        matrix.v1 = rotation.MulV(original.v1) * scale
+                        matrix.v2 = rotation.MulV(original.v2) * scale
+                        matrix.v3 = rotation.MulV(original.v3) * scale
+                    else:
+                        matrix.off = original.off + (point-start)
+                    op.SetMg(matrix)
+                    now = time.monotonic()
+                    if now - last_draw >= 1/30:
+                        redraw_drag()
+                        last_draw = now
             finally:
-                win.MouseDragEnd()
-
-            if result == c4d.MOUSEDRAGRESULT_FINISHED:
-                # si on est au bout du premier drag on modifie l'axe
-                if not self._phase2:
-                    mg.off = pt
-                    move_axis_global(op, mg)
-                self._phase2 = not self._phase2
-
-            #si la touche SHIFT ou CTRL ne sont pas enfoncee on deselectionne tout
-            if not (msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QSHIFT  or  msg[c4d.BFM_INPUT_QUALIFIER]==c4d.QCTRL): pass
-
-            c4d.DrawViews(c4d.DRAWFLAGS_FORCEFULLREDRAW,bd)
-            c4d.EventAdd()
-
-
-            return True
+                ended = win.MouseDragEnd()
+                if temporary:
+                    op[c4d.ID_BASEOBJECT_XRAY] = old_xray
+            if ended == c4d.MOUSEDRAGRESULT_ESCAPE or result == c4d.MOUSEDRAGRESULT_ESCAPE:
+                op.SetMg(original)
+            else:
+                if not second:
+                    pivot = op.GetMg()
+                    pivot.off = point
+                    move_axis_global(op, pivot)
+                self.set_phase(not second)
         finally:
             doc.EndUndo()
+            c4d.EventAdd()
+        return True
 
     def AllocSubDialog(self, bc):
         """
@@ -409,7 +383,7 @@ class CalageImage(c4d.plugins.ToolData):
         :return: The allocated sub dialog.
         """
 
-        self.dlg = SettingsDialog(getattr(self, "data", {'mode': 1}))
+        self.dlg = SettingsDialog(self)
         return self.dlg
 
 
@@ -419,4 +393,4 @@ if __name__ == "__main__":
      fn = os.path.join(dir, "res", "calageImage.tif")
      bmp.InitWith(fn)
      c4d.plugins.RegisterToolPlugin(id=PLUGIN_ID,str="#$03Calage d'image",info=0,
-                        icon=bmp,help="blabla",dat=CalageImage())
+                        icon=bmp,help="Déplacer une image, puis ajuster sa rotation ou son échelle.",dat=CalageImage())

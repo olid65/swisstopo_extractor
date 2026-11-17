@@ -123,13 +123,14 @@ def query_geometry(bbox_or_spline, origine):
 def url_geojson_trees(bbox_or_spline,origine):
     """ si une spline est dans bbox_or_spline renvoie les élément à l'intérieur du polygone,
         si c'est' un tuple de 4 float (bbox) renvoie les élément à l'intérieur de la bbox"""
-    url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/0'
+    url_base = 'https://services2.arcgis.com/tudTzOPwvMbS0NgD/arcgis/rest/services/TLM_C4D_couverture_sol_WFL1/FeatureServer/0'
     geometry, kind = query_geometry(bbox_or_spline, origine)
 
     #par défaut on met les paramètres selon la bbox (enveloppe)
     params = {
                 "geometry": geometry,
                 "geometryType": kind,
+                "inSR": "2056",
                 "outSR":'2056',
                 "returnGeometry":"true",
                 "returnZ": "true",
@@ -162,30 +163,18 @@ def url_geojson_forest(bbox_or_spline,origine):
     """ si une spline est dans bbox_or_spline renvoie les élément à l'intérieur du polygone,
         si c'est' un tuple de 4 float (bbox) renvoie les élément à l'intérieur de la bbox"""
 
-    url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
+    url_base = 'https://services2.arcgis.com/tudTzOPwvMbS0NgD/arcgis/rest/services/TLM_C4D_couverture_sol_WFL1/FeatureServer/1'
     geometry, kind = query_geometry(bbox_or_spline, origine)
 
     #catégories dans le champ OBJEKTART que l'on récupère'
-    categories ={'Gebueschwald':'Forêt buissonnante',
-                 'Wald':'Forêt',
-                 'Wald offen': 'Forêt claisemée',
-                 'Gehoelzflaeche':'Zone boisée',
-                 }
-    sql = ''
-    for i,cat in enumerate(categories.keys()):
-
-        if i>0 :
-            sql+=' OR '
-        sql+=f"OBJEKTART='{cat}'"
-
-    #par défaut on met les paramètres selon la bbox (enveloppe)
     params = {
                 "geometry": geometry,
                 "geometryType": kind,
+                "inSR": "2056",
                 "returnGeometry":"true",
-                "outFields":"OBJEKTART",
-                "orderByFields" : "OBJEKTART",
-                "where" : f"{sql}",
+                "outFields":"objektart",
+                "orderByFields" : "objektart",
+                "where" : "objektart IN (6,12,13,14)",
                 "returnZ": "true",
                 "outSR":'2056',
                 "spatialRel":"esriSpatialRelIntersects",

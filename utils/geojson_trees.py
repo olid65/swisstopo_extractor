@@ -22,6 +22,10 @@ CATEGORIES ={'Gebueschwald':'Forêt buissonnante',
              'Gehoelzflaeche':'Zone boisée',
              }
 
+# The hosted feature layer returns integer subtype IDs. Earlier files use names.
+CATEGORIES.update({6: CATEGORIES["Gebueschwald"], 12: CATEGORIES["Wald"],
+                   13: CATEGORIES["Wald offen"], 14: CATEGORIES["Gehoelzflaeche"]})
+
 def createSpline(pts,segments, name):
     pcnt = len(pts)
     sp = c4d.SplineObject(pcnt,c4d.SPLINETYPE_LINEAR)
@@ -128,11 +132,11 @@ def splinesFromGeojson(fn,origine):
                 cat = feat['properties']['objektart']
 
             geom = feat['geometry']
-            for ring in geom['coordinates']:
-                for i,(x,y,z) in enumerate(ring):
-                    #ATTENTION JE N'AI PAS UTILISE LE Z POUR POUVOIR DECOUPER LES SPLINES ENSUITE
-                    pts.append(c4d.Vector(x,0,y)-origine)
-                segments.append(i+1)
+            polygons = geom['coordinates'] if geom['type'] == 'MultiPolygon' else [geom['coordinates']]
+            for polygon in polygons:
+                for ring in polygon:
+                    pts.extend(c4d.Vector(point[0], 0, point[1])-origine for point in ring)
+                    segments.append(len(ring))
 
         #por la dernière catégorie
         sp = createSpline(pts,segments,name = CATEGORIES[cat])

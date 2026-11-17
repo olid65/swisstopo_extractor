@@ -206,25 +206,14 @@ def polygons_from_spline(sp,url_base,origine):
     poly_json = spline2json(sp,origine)
     if poly_json:
         #catégories dans le champ OBJEKTART que l'on récupère'
-        categories ={'Gebueschwald':'Forêt buissonnante',
-                     'Wald':'Forêt',
-                     'Wald offen': 'Forêt claisemée',
-                     'Gehoelzflaeche':'Zone boisée',
-                     }
-        sql = ''
-        for i,cat in enumerate(categories.keys()):
-
-            if i>0 :
-                sql+=' OR '
-            sql+=f"OBJEKTART='{cat}'"
-        #&outFields=OBJEKTART&orderByFields=OBJEKTART
+        categories = {6: "Forêt buissonnante", 12: "Forêt", 13: "Forêt clairsemée", 14: "Zone boisée"}
         params = {
                     "geometry": poly_json,
                     "geometryType": "esriGeometryPolygon",
                     "returnGeometry":"true",
-                    "outFields":"OBJEKTART",
-                    "orderByFields" : "OBJEKTART",
-                    "where" : f"{sql}",
+                    "outFields":"objektart",
+                    "orderByFields" : "objektart",
+                    "where" : "objektart IN (6,12,13,14)",
                     "returnZ": "true",
                     "spatialRel":"esriSpatialRelIntersects",
                     "f":"json"
@@ -248,7 +237,7 @@ def main():
 
     origine = doc[CONTAINER_ORIGIN]
 
-    url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/1'
+    url_base = 'https://services2.arcgis.com/tudTzOPwvMbS0NgD/arcgis/rest/services/TLM_C4D_couverture_sol_WFL1/FeatureServer/1'
 
     #Polygoness selon spline sélectionnée
     splines = polygons_from_spline(op,url_base,origine)
@@ -257,7 +246,7 @@ def main():
         c4d.EventAdd()
     return
 
-    url_base = 'https://hepiadata.hesge.ch/arcgis/rest/services/suisse/TLM_C4D_couverture_sol/FeatureServer/0'
+    url_base = 'https://services2.arcgis.com/tudTzOPwvMbS0NgD/arcgis/rest/services/TLM_C4D_couverture_sol_WFL1/FeatureServer/0'
     #Points selon bbox de l'objet sélectionné
     xmin,ymin,xmax,ymax = empriseObject(op, origine)
     print(xmin,ymin,xmax,ymax)

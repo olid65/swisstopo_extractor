@@ -8,12 +8,12 @@ MAX_SIDE = 10000
 MIN_CM = 10
 
 
-def grid(bounds, requested_cm):
+def grid(bounds, requested_cm, min_cm=MIN_CM):
     west, south, east, north = bounds
     dx, dy = east-west, north-south
     if dx <= 0 or dy <= 0:
         raise ValueError("L’emprise doit avoir une largeur et une hauteur positives.")
-    cm = max(MIN_CM, requested_cm, math.ceil(max(dx, dy) * 100 / MAX_SIDE))
+    cm = max(min_cm, requested_cm, math.ceil(max(dx, dy) * 100 / MAX_SIDE))
     step = cm / 100
     width = max(1, min(MAX_SIDE, math.ceil(round(dx / step, 8))))
     height = max(1, min(MAX_SIDE, math.ceil(round(dy / step, 8))))

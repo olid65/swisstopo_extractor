@@ -2,6 +2,8 @@ import c4d, os, sys
 
 sys.path.append(os.path.dirname(__file__))
 import extractor
+from utils.swisstopo_display import DisplayCommand
+from utils import swisstopo_background as bg
 
 
 __version__ = 1.0
@@ -30,6 +32,22 @@ def icone(nom) :
     return bmp
     
 if __name__=='__main__':
-    c4d.plugins.RegisterCommandPlugin(id=PLUGIN_ID_SWISSTOPOEXTRACTOR, str="swisstopo extractor",
+    c4d.plugins.RegisterCommandPlugin(id=PLUGIN_ID_SWISSTOPOEXTRACTOR, str="swisstopo maquette 3D",
                                       info=0, help="", dat=SwisstopoExtractor(),
                                       icon=icone("swisstopo.png"))
+    c4d.plugins.RegisterCommandPlugin(id=bg.ID_ORTHO, str="swisstopo affichage",
+                                      info=0, help="Choisir le fond de la vue de haut",
+                                      dat=DisplayCommand(), icon=icone("swisstopo_affichage.png"))
+
+
+    from utils import swisstopo_images
+
+    class SwisstopoImages(c4d.plugins.CommandData):
+        def Execute(self, doc):
+            swisstopo_images.main()
+            return True
+
+    c4d.plugins.RegisterCommandPlugin(
+        id=1074448, str="swisstopo images", info=0,
+        help="Extraire une image swisstopo", dat=SwisstopoImages(),
+        icon=icone("swisstopo_images.png"))

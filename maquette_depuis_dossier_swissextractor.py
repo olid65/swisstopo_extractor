@@ -30,6 +30,7 @@ DIRNAME_ORTHO10CM = 'swissimage-dop10_10cm'
 
 sys.path.append(os.path.dirname(__file__))
 
+from utils import redshift_scene
 import utils.raster as raster
 import utils.mnt as importMNT
 import utils.nearest_location
@@ -41,7 +42,7 @@ import utils.geojson_trees
 import utils.mograph_trees
 
 
-from utils.swissbuildings3D import SELECTION_NAME_TOITS
+from utils.swissbuildings3D import SELECTION_NAME_TOITS, SELECTION_NAME_FACADES
 import utils.shapefile as shapefile
 
 DOC_NOT_IN_METERS_TXT = "Les unités du document ne sont pas en mètres, si vous continuez les unités seront modifiées.\nVoulez-vous continuer ?"
@@ -484,7 +485,7 @@ def tex_folder(doc, subfolder = None):
 
 
 # Main function
-def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None, ortho_wms_file=None, progress=None):
+def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns,taille_maille_mns, bati3D,bati3D_v3, ortho2m,ortho10cm,fn_trees,fn_forest,arbres_sources = None,spline_decoupe = None, ortho_wms_file=None, progress=None, scene_bounds=None):
     terrain_count = int(bool(mnt2m)) + int(bool(mnt50cm))
     photo = bool(ortho_wms_file or ortho2m or ortho10cm)
     total = (2 * (terrain_count + int(bool(mns))) + 2 * int(photo)
@@ -498,14 +499,11 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         if progress:
             progress(index, total, action)
 
-    #on vérifie que le moteur de rendu soit bien "Standard" ->0
-    #si ce n'est pas le cas on le met
     rdata = doc.GetActiveRenderData()
-    
-    if rdata[c4d.RDATA_RENDERENGINE] != 0:
+    redshift = rdata[c4d.RDATA_RENDERENGINE] == redshift_scene.RENDERER
+    if not redshift and rdata[c4d.RDATA_RENDERENGINE] != 0:
         rdata[c4d.RDATA_RENDERENGINE] = 0
-    
-    
+
     #suffixe avec la bbox pour l'orthophoto
     #pour ne pas refaire si l'image existe
     suffixe_img = f'_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}'
@@ -733,6 +731,24 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
             buildings_v3.InsertUnderLast(null_maquette)
             buildings_solid.InsertUnderLast(null_maquette)
 
+        facade_meshes = [mesh for mesh in (buildings, buildings_v3) if mesh is not None
+                         and any(t.CheckType(c4d.Tpolygonselection) and
+                                 t.GetName() == SELECTION_NAME_FACADES for t in mesh.GetTags())]
+        if facade_meshes:
+            if redshift:
+                facade_material = redshift_scene.material(doc, "Façades RS")
+            else:
+                facade_material = c4d.BaseMaterial(c4d.Mmaterial)
+                facade_material.SetName("Façades")
+                facade_material[c4d.MATERIAL_COLOR_COLOR] = c4d.Vector(1)
+                facade_material[c4d.MATERIAL_USE_REFLECTION] = False
+                doc.InsertMaterial(facade_material)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, facade_material)
+            for mesh in facade_meshes:
+                tag = mesh.MakeTag(c4d.Ttexture)
+                tag.SetMaterial(facade_material)
+                tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_FACADES
+
         ###################################
         # ARBRES
         ###################################
@@ -778,8 +794,12 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
             #il faut que l'image et le fichier de calage existe'
             if os.path.isfile(img) and os.path.isfile(fn_calage):
                 gp = raster.Geopict(img,fn_calage,doc)
-                mat = gp.creerTexture(relatif=True)
-                mat = gp.mat
+                name = f"ortho_{round(gp.val_pix * 100)}cm"
+                if redshift:
+                    gp.mat = redshift_scene.material(doc, name + " RS", img)
+                else:
+                    gp.creerTexture(relatif=True)
+                    gp.mat.SetName(name)
 
             #on contraint les tags materiau au mnt
             if mnt :
@@ -787,6 +807,8 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 if not mnt.GetTag(1026472,0):
                     tg = gp.creerGeoTag(mnt)
                 tag = gp.creerTagTex(mnt, displayTag = False)
+                if redshift:
+                    tag.SetPos(~mnt.GetMg() * (gp.centre - origine))
                 tag[c4d.TEXTURETAG_RESTRICTION] = NAME_SELECTION_MNT
 
             for building_mesh in (buildings, buildings_v3):
@@ -796,7 +818,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                     gp.creerGeoTag(building_mesh)
                 tag = gp.creerTagTex(building_mesh, displayTag=False)
                 tag[c4d.TEXTURETAG_RESTRICTION] = SELECTION_NAME_TOITS
-                if building_mesh == buildings_v3:
+                if redshift or building_mesh == buildings_v3:
                     tag.SetPos(~building_mesh.GetMg() * (gp.centre - origine))
 
 
@@ -805,11 +827,15 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
                 if not trees.GetTag(1026472,0):
                     tg = gp.creerGeoTag(trees)
                 tag = gp.creerTagTex(trees, displayTag = False)
+                if redshift:
+                    tag.SetPos(~trees.GetMg() * (gp.centre - origine))
             if forest :
                 #on regarde si il a un geotag
                 if not forest.GetTag(1026472,0):
                     tg = gp.creerGeoTag(forest)
                 tag = gp.creerTagTex(forest, displayTag = False)
+                if redshift:
+                    tag.SetPos(~forest.GetMg() * (gp.centre - origine))
 
 
         ##################################
@@ -841,7 +867,11 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         #ENVIRONNEMENT
         ##############################################
         #on crée seulement si on n'en trouve pas déjà un
-        if not doc.SearchObject('environnement'):
+        if redshift:
+            if not doc.SearchObject("environnement Redshift"):
+                redshift_scene.environment(doc, origine, scene_bounds or (xmin, ymin, xmax, ymax),
+                                           alt_min, lv95towgs84)
+        elif not doc.SearchObject('environnement'):
             environnement = c4d.BaseObject(c4d.Onull)
             environnement.SetName('environnement')
 

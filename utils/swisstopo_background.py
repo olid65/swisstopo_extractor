@@ -130,9 +130,10 @@ def select(layer):
 
 def fetch(key):
     layer, folder, bbox, width, height, origin = key
+    service = layer if isinstance(layer, str) else LAYERS[layer][1]
     bounds = ",".join(map(str, bbox))
     url = (f"https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0"
-           f"&LAYERS={LAYERS[layer][1]}&STYLES=default&CRS=EPSG:2056&BBOX={bounds}"
+           f"&LAYERS={service}&STYLES=default&CRS=EPSG:2056&BBOX={bounds}"
            f"&WIDTH={width}&HEIGHT={height}&FORMAT=image/png")
     with urllib.request.urlopen(url, timeout=30) as response:
         image = response.read()

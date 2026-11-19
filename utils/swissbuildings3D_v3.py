@@ -15,41 +15,12 @@ CONTAINER_ORIGIN = 1026473
 
 NAME_SWISSBUILDINGS3D_V3 = 'swissbuildings3d_v3'
 
-def getPathToQGISbin(path_to_QGIS = None):
-    #Si le path_to_QGIS n'est pas renseigné on prend le chemin par défaut selon la plateforme
-    win = sys.platform == 'win32'
-    if not path_to_QGIS:
-        if sys.platform == 'win32':
-            path_to_QGIS = 'C:\\Program Files'
-        else:
-            path_to_QGIS = '/Applications'
-    for folder_name in os.listdir(path_to_QGIS):
-        if 'QGIS'  in folder_name:
-            if win :
-                path = os.path.join(path_to_QGIS,folder_name,'bin')
-            else:
+from utils.gis_tools import getPathToQGISbin, gdalBIN_OK
+from utils import gis_tools
 
-                path = os.path.join(path_to_QGIS,folder_name,'Contents/MacOS/bin')
+def ogrBIN_OK(path_to_QGIS_bin, exe="ogr2ogr"):
+    return gdalBIN_OK(path_to_QGIS_bin, exe)
 
-            if os.path.isdir(path):
-                # on vérifie qu'il y ait bien gdal_translate
-                #TODO vérifier les autres
-                if win :
-                    if os.path.isfile(os.path.join(path,'gdal_translate.exe')):
-                        return path
-                else:
-                    if os.path.isfile(os.path.join(path,'gdal_translate')):
-                        return path
-    return None
-
-def ogrBIN_OK(path_to_QGIS_bin, exe = 'ogr2ogr'):
-    if sys.platform == 'win32':
-        exe+='.exe'
-    path = os.path.join(path_to_QGIS_bin,exe)
-    if os.path.isfile(path):
-        return path
-    else:
-        return False
 
 def get_swissbuildings3D_v3_gdbs(path):
     """renvoie une liste de fichier dxf contenus dans
@@ -78,7 +49,7 @@ def shape_directories(databases, ogr, bounds):
         if not directory.is_dir():
             with tempfile.TemporaryDirectory(dir=parent) as staging:
                 output = Path(staging) / "shapes"
-                subprocess.run([ogr, "-f", "ESRI Shapefile", "-spat", *map(str, bounds),
+                gis_tools.run([ogr, "-f", "ESRI Shapefile", "-spat", *map(str, bounds),
                                 str(output), database, *layers], check=True)
                 for layer in layers:
                     if not (output / (layer + ".shp")).is_file():

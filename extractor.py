@@ -297,7 +297,7 @@ class DlgBbox(GeoExtentDialog):
     TXT_PATH_CAR_SPECIAL = "Le chemin de fichier continet un ou plusieurs caractères spéciaux (accents,cédille,...) \nImport impossible !"
 
 
-    TXT_NO_PATH_TO_QGIS = "QGis ne semble pas installé sur cette machine, vous pourrez importer les différents fichiers sur votre ordinateur, mais pas importer la maquette dans Cinema4D."
+    TXT_NO_PATH_TO_QGIS = "Les outils GDAL de QGIS sont introuvables. Sur Mac, installez QGIS dans /Applications ou ~/Applications. Pour un autre emplacement, renseignez SWISSTOPO_QGIS_PATH avec le chemin de QGIS.app ou du dossier bin. Le téléchargement reste disponible."
     TXT_NO_PATH_TO_QGIS_QUESTION = TXT_NO_PATH_TO_QGIS +" Voulez-vous continuer ?"
     TXT_NO_PATH_TO_QGIS_FINAL = "Sans Qgis l'import de la maquette est impossible !"
 
@@ -608,17 +608,6 @@ class DlgBbox(GeoExtentDialog):
             if 'hes-nas-prairie.hes.adhes.hesge.ch' in path_doc:
                 c4d.gui.MessageDialog(self.TXT_NAS_HEPIA)
                 return True
-
-            #Vérification qu'il n'y ait pas de caractères spéciaux dans le chemin !
-            #GDAL ne supporte pas
-            try : 
-                path_doc.encode(encoding='ASCII')
-            except UnicodeEncodeError:
-                c4d.gui.MessageDialog(self.TXT_PATH_CAR_SPECIAL)
-                return True
-
-
-
 
             self.qgispath = getPathToQGISbin()
             if not self.qgispath:

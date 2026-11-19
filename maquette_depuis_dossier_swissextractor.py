@@ -274,41 +274,8 @@ def get_cube_from_bbox(xmin,ymin,xmax,ymax, origin):
 #GDAL
 ##################################################################################################
 
-def getPathToQGISbin(path_to_QGIS = None):
-    #Si le path_to_QGIS n'est pas renseigné on prend le chemin par défaut selon la plateforme
-    win = sys.platform == 'win32'
-    if not path_to_QGIS:
-        if sys.platform == 'win32':
-            path_to_QGIS = 'C:\\Program Files'
-        else:
-            path_to_QGIS = '/Applications'
-    for folder_name in os.listdir(path_to_QGIS):
-        if 'QGIS'  in folder_name:
-            if win :
-                path = os.path.join(path_to_QGIS,folder_name,'bin')
-            else:
-
-                path = os.path.join(path_to_QGIS,folder_name,'Contents/MacOS/bin')
-
-            if os.path.isdir(path):
-                # on vérifie qu'il y ait bien gdal_translate
-                #TODO vérifier les autres 
-                if win :
-                    if os.path.isfile(os.path.join(path,'gdal_translate.exe')):
-                        return path
-                else:
-                    if os.path.isfile(os.path.join(path,'gdal_translate')):
-                        return path
-    return None
-
-def gdalBIN_OK(path_to_QGIS_bin, exe = 'gdal_translate'):
-    if sys.platform == 'win32':
-        exe+='.exe'
-    path = os.path.join(path_to_QGIS_bin,exe)
-    if os.path.isfile(path):
-        return path
-    else:
-        return False
+from utils.gis_tools import getPathToQGISbin, gdalBIN_OK
+from utils import gis_tools
 
 def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
     if not path_to_gdalbuildvrt:
@@ -323,7 +290,7 @@ def createVRTfromDir(path_tifs, path_to_gdalbuildvrt = None):
     #fichier texte avec listes images tif
     lst_img_txt = dirImgToTextFile(path_tifs, ext = '.tif')
     if lst_img_txt:
-        subprocess.run([path_to_gdalbuildvrt, "-input_file_list", lst_img_txt, fn_vrt], check=True)
+        gis_tools.run([path_to_gdalbuildvrt, "-input_file_list", lst_img_txt, fn_vrt], check=True)
         #on supprime le fichier txt
         os.remove(lst_img_txt)
         if os.path.isfile(fn_vrt):
@@ -357,7 +324,7 @@ def extractFromBbox(raster_srce, raster_dst,xmin,ymin,xmax,ymax,taille_maille = 
     if taille_maille:
         args.extend(["-tr", str(taille_maille), str(taille_maille)])
     args.extend(["-projwin", *map(str, (xmin, ymax, xmax, ymin)), raster_srce, raster_dst])
-    subprocess.run(args, check=True)
+    gis_tools.run(args, check=True)
     if os.path.isfile(raster_dst):
         return raster_dst
 
@@ -374,7 +341,7 @@ def extractFromSpline(fn_shp,raster_srce, raster_dst,cellsize, form = 'AAIGrid',
         return False
     
     layer_name = os.path.basename(fn_shp)[:-4]
-    subprocess.run([path_to_gdalwarp, "-overwrite", "-of", form, "-cutline", fn_shp,
+    gis_tools.run([path_to_gdalwarp, "-overwrite", "-of", form, "-cutline", fn_shp,
                     "-tr", str(cellsize), str(cellsize), "-cl", layer_name,
                     "-crop_to_cutline", raster_srce, raster_dst], check=True)
     
@@ -570,7 +537,7 @@ def main(doc,origine,pth,xmin,ymin,xmax,ymax,taille_maille_mnt,mnt2m,mnt50cm,mns
         name = os.path.splitext(os.path.basename(ortho_wms_file))[0] + '.png'
         texture = os.path.join(texture_dir, name)
         translate = gdalBIN_OK(getPathToQGISbin(), exe='gdal_translate')
-        subprocess.run([translate, '-of', 'PNG', '-co', 'WORLDFILE=YES',
+        gis_tools.run([translate, '-of', 'PNG', '-co', 'WORLDFILE=YES',
                         ortho_wms_file, texture], check=True)
         lst_imgs.append(texture)
 

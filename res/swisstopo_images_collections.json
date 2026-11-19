@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "collections": {
+    "défaut": [
+      {
+        "name": "Carte Dufour première édition (entre 1844 et 1864)",
+        "layer": "ch.swisstopo.hiks-dufour",
+        "short_name": "Dufour",
+        "min_cm": 50
+      },
+      {
+        "name": "Carte Siegfried première édition (entre 1870 et 1926)",
+        "layer": "ch.swisstopo.hiks-siegfried",
+        "short_name": "Siegfried",
+        "min_cm": 100
+      },
+      {
+        "name": "Orthophoto 1946",
+        "layer": "ch.swisstopo.swissimage-product_1946",
+        "short_name": "ortho_46",
+        "min_cm": 100
+      },
+      {
+        "name": "Orthophoto 10cm",
+        "layer": "ch.swisstopo.images-swissimage",
+        "short_name": "ortho_actuelle",
+        "min_cm": 10
+      },
+      {
+        "name": "Carte nationale grise 1:10'000",
+        "layer": "ch.swisstopo.landeskarte-grau-10",
+        "short_name": "cn10_gris",
+        "min_cm": 25
+      },
+      {
+        "name": "Carte nationale couleur 1:10'000",
+        "layer": "ch.swisstopo.landeskarte-farbe-10",
+        "short_name": "cn10_clr",
+        "min_cm": 25
+      },
+      {
+        "name": "Carte nationale couleur 1:25'000",
+        "layer": "ch.swisstopo.pixelkarte-farbe-pk25.noscale",
+        "short_name": "cn25_clr",
+        "min_cm": 50
+      },
+      {
+        "name": "Carte nationale couleur 1:50'000",
+        "layer": "ch.swisstopo.pixelkarte-farbe-pk50.noscale",
+        "short_name": "cn50_clr",
+        "min_cm": 50
+      },
+      {
+        "name": "Carte nationale couleur échelle auto",
+        "layer": "ch.swisstopo.pixelkarte-farbe",
+        "short_name": "cn_clr_auto",
+        "min_cm": 25
+      },
+      {
+        "name": "Carte nationale grise échelle auto",
+        "layer": "ch.swisstopo.pixelkarte-grau",
+        "short_name": "cn_gris_auto",
+        "min_cm": 25
+      }
+    ]
+  }
+}

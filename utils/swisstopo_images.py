@@ -1,8 +1,35 @@
+"""Extraction d'images swisstopo, collections et import Standard/Redshift."""
 import c4d
+from pathlib import Path
 import os.path
 import urllib.request
+import urllib.parse
+import math
+import webbrowser
 from utils import ortho_wms, swisstopo_background as bg
 from utils.geo_extent_dialog import CONTAINER_ORIGIN, GeoExtentDialog
+from utils.swisstopo_images_controls import LayerControls
+
+
+def swisstopo_map_url(bounds, viewport=(1000, 700)):
+    """Cadre estimé pour une carte web de 1000 x 700 pixels, avec 10 % de marge."""
+    xmin, ymin, xmax, ymax = bounds
+    if not all(math.isfinite(v) for v in bounds) or xmax <= xmin or ymax <= ymin:
+        raise ValueError("Définissez une emprise valide avant d’ouvrir la carte.")
+    # Pyramide LV95 du viewer officiel (SwissCoordinateSystem.ts).
+    resolutions = (650, 500, 250, 100, 50, 20, 10, 5, 2.5, 2, 1, .5, .25, .1)
+    resolution = max((xmax - xmin) / viewport[0], (ymax - ymin) / viewport[1]) * 1.1
+    zoom = 0.0
+    if resolution <= resolutions[-1]:
+        zoom = float(len(resolutions) - 1)
+    elif resolution < resolutions[0]:
+        for index, (coarse, fine) in enumerate(zip(resolutions, resolutions[1:])):
+            if coarse >= resolution >= fine:
+                zoom = index + math.log(coarse / resolution) / math.log(coarse / fine)
+                break
+    return ("https://map.geo.admin.ch/#/map?lang=fr"
+            f"&center={(xmin + xmax) / 2:.2f},{(ymin + ymax) / 2:.2f}"
+            f"&z={zoom:.3f}")
 
 
 def tex_folder(doc, subfolder = None):
@@ -63,7 +90,56 @@ def make_editable(op,doc):
 
     return None
 
+def apply_map_material(doc, obj, material, bounds):
+    """Projection de dessus dans le repère géographique, adaptée au repère de l'objet."""
+    xmin, ymin, xmax, ymax = bounds
+    world = c4d.utils.HPBToMatrix(c4d.Vector(0, -math.pi / 2, 0))
+    world.off = c4d.Vector((xmin+xmax)/2, 0, (ymin+ymax)/2) - doc[CONTAINER_ORIGIN]
+    world.v1 *= (xmax-xmin)/2
+    world.v2 *= (ymax-ymin)/2
+    tag = c4d.TextureTag()
+    tag.SetMaterial(material)
+    tag[c4d.TEXTURETAG_PROJECTION] = c4d.TEXTURETAG_PROJECTION_FLAT
+    tag[c4d.TEXTURETAG_TILE] = False
+    tag.SetMl(~obj.GetMg() * world)
+    tags = obj.GetTags()
+    obj.InsertTag(tag, tags[-1] if tags else None)
+    doc.AddUndo(c4d.UNDOTYPE_NEWOBJ, tag)
+    return tag
+
+
+def creer_mat_redshift(fn, doc):
+    """Matériau non inséré : l'appelant gère l'insertion et l'annulation."""
+    import maxon
+    core = 'com.redshift3d.redshift4c4d.nodes.core.'
+    mat = c4d.BaseMaterial(c4d.Mmaterial)
+    mat.SetName(Path(fn).stem + ' RS')
+    graph = mat.GetNodeMaterialReference().CreateEmptyGraph(
+        maxon.Id('com.redshift3d.redshift4c4d.class.nodespace'))
+    with graph.BeginTransaction() as transaction:
+        shader = graph.AddChild(maxon.Id(), maxon.Id(core + 'standardmaterial'))
+        output = graph.AddChild(maxon.Id(), maxon.Id('com.redshift3d.redshift4c4d.node.output'))
+        texture = graph.AddChild(maxon.Id(), maxon.Id(core + 'texturesampler'))
+        path = os.path.relpath(fn, doc.GetDocumentPath()).replace(os.sep, '/') if doc.GetDocumentPath() else fn
+        texture.GetInputs().FindChild(core + 'texturesampler.tex0').FindChild('path').SetPortValue(maxon.Url(path))
+        texture.GetOutputs().FindChild(core + 'texturesampler.outcolor').Connect(
+            shader.GetInputs().FindChild(core + 'standardmaterial.base_color'))
+        splitter = graph.AddChild(maxon.Id(), maxon.Id(core + 'rscolorsplitter'))
+        texture.GetInputs().FindChild(core + 'texturesampler.alpha_is_luminance').SetPortValue(False)
+        texture.GetOutputs().FindChild(core + 'texturesampler.outcolor').Connect(
+            splitter.GetInputs().FindChild(core + 'rscolorsplitter.input'))
+        splitter.GetOutputs().FindChild(core + 'rscolorsplitter.outa').Connect(
+            shader.GetInputs().FindChild(core + 'standardmaterial.opacity_color'))
+        shader.GetInputs().FindChild(core + 'standardmaterial.refl_weight').SetPortValue(0.0)
+        shader.GetOutputs().FindChild(core + 'standardmaterial.outcolor').Connect(
+            output.GetInputs().FindChild('com.redshift3d.redshift4c4d.node.output.surface'))
+        transaction.Commit()
+    return mat
+
+
 def creer_mat(fn, doc, alpha = False):
+    if doc.GetActiveRenderData()[c4d.RDATA_RENDERENGINE] == 1036219:
+        return creer_mat_redshift(fn, doc)
     nom = os.path.basename(fn)
     relatif = False
     docpath = doc.GetDocumentPath()
@@ -87,7 +163,7 @@ def creer_mat(fn, doc, alpha = False):
 
     #on teste si il y a une couche alpha
     #le jpg ne peut pas contenir d'alpha'
-    if fn[:-4] != '.jpg':
+    if Path(fn).suffix.lower() not in ('.jpg', '.jpeg'):
         bmp = c4d.bitmaps.BaseBitmap()
 
         result, isMovie = bmp.InitWith(fn)
@@ -110,7 +186,7 @@ def creer_mat(fn, doc, alpha = False):
     mat.Update(True, True)
     return mat
 
-class SwissImagesDlg(GeoExtentDialog):
+class BaseSwissImagesDlg(GeoExtentDialog):
     dialog_title = "swisstopo images"
 
     LIST_WEB_SERVICES = [
@@ -135,6 +211,7 @@ class SwissImagesDlg(GeoExtentDialog):
     ID_TAILLE_MAILLE = 2102
     DIMENSIONS = 2103
     ID_BTON_REQUEST = 2106
+    ID_BTON_WEB = 2107
     TXT_FILE_EXIST = "Il semble que le fichier mage existe déjà, voulez vous continuer ?"
     TXT_DOWNLOAD_PROBLEM = "Problème lors du téléchargement de l'image"
     TXT_FILE_CREATION_PROBLEM = "Problème lors de la création du fichier image"
@@ -142,14 +219,7 @@ class SwissImagesDlg(GeoExtentDialog):
     def add_extraction_sections(self):
         self.AddStaticText(0, c4d.BFH_LEFT, name=self.TITLE_LAYER_CHOICE,
                            borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
-        self.GroupBegin(0, c4d.BFH_SCALEFIT, cols=1)
-        self.GroupBorderSpace(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-        self.GroupSpace(0, self.MARGIN)
-        self.AddComboBox(self.ID_LST_CHOIX_IMG, c4d.BFH_SCALEFIT)
-        for index, service in enumerate(self.LIST_WEB_SERVICES, 1):
-            self.AddChild(self.ID_LST_CHOIX_IMG, index, service["name"])
-        self.AddRadioButton(self.ID_BTON_DISPLAY, c4d.BFH_CENTER, name="Afficher dans la vue de haut")
-        self.GroupEnd()
+        self.add_layer_controls()
         self.AddSeparatorH(initw=150, flags=c4d.BFH_FIT)
         self.AddStaticText(0, c4d.BFH_LEFT, name=self.TITLE_LIST_TO_DOWNLOAD,
                            borderstyle=c4d.BORDER_WITH_TITLE_BOLD)
@@ -189,6 +259,7 @@ class SwissImagesDlg(GeoExtentDialog):
         usable = valid and minimum <= self.MAX_CM
         cm = min(self.MAX_CM, max(minimum, self.preferred_cm or 0))
         self.SetInt32(self.ID_TAILLE_MAILLE, cm, min(minimum, self.MAX_CM), self.MAX_CM, 1)
+        self.Enable(self.ID_BTON_WEB, valid)
         self.Enable(self.ID_TAILLE_MAILLE, usable)
         self.Enable(self.ID_BTON_REQUEST, usable)
         if usable:
@@ -217,7 +288,18 @@ class SwissImagesDlg(GeoExtentDialog):
 
     def handle_command(self, id, msg):
         layer = self.service()["layer"]
-        if id == self.ID_BTON_DISPLAY:
+        if id == self.ID_BTON_WEB:
+            lo, hi = self.getBbox()
+            try:
+                url = swisstopo_map_url((lo.x, lo.z, hi.x, hi.z))
+                selected_layers = ';'.join(r['layer'] for r in self.selected_services())
+                if selected_layers:
+                    url += '&layers=' + urllib.parse.quote(selected_layers, safe='.;')
+                if not webbrowser.open(url, new=2):
+                    c4d.gui.MessageDialog("Impossible d’ouvrir le navigateur. Adresse :\n" + url)
+            except (ValueError, webbrowser.Error, OSError) as error:
+                c4d.gui.MessageDialog(str(error))
+        elif id == self.ID_BTON_DISPLAY:
             active = self.active_background()
             bg.toggle(active if isinstance(active, str) else layer)
             self.refresh_background_choice()
@@ -249,9 +331,7 @@ class SwissImagesDlg(GeoExtentDialog):
         cm, width, height = self.grid
         xmax = xmin + width * cm / 100
         ymin = ymax - height * cm / 100
-        choix_list = self.GetInt32(self.ID_LST_CHOIX_IMG)
-        #print(self.LIST_WEB_SERVICES(choix_list-1)['url_base'])
-        service = self.LIST_WEB_SERVICES[choix_list-1]
+        service = self.service()
         layer = service['layer']
         
 
@@ -270,41 +350,46 @@ class SwissImagesDlg(GeoExtentDialog):
                 return None
 
         #url = f'{url_base}export?bbox={xmin},{ymin},{xmax},{ymax}&format={format}&size={width},{height}&f=image&bboxSR={sr}&imageSR={sr}'#.format(bbox,size,bboxSR,imageSR)
-        url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={xmin},{ymin},{xmax},{ymax}&WIDTH={width}&HEIGHT={height}&FORMAT=image/png'
+        styles = ','.join('default' for _ in layer.split(','))
+        url = f'https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES={styles}&CRS=EPSG:2056&BBOX={xmin},{ymin},{xmax},{ymax}&WIDTH={width}&HEIGHT={height}&FORMAT=image/png&TRANSPARENT=TRUE'
 
-        try :
-            x = urllib.request.urlopen(url)
-        
-        except :
-            c4d.gui.MessageDialog(self.TXT_DOWNLOAD_PROBLEM)
-            return None
-
+        # Ne remplacer un fichier existant qu'après réception d'un PNG valide.
+        with urllib.request.urlopen(url, timeout=30) as response:
+            image = response.read()
+        if not image.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise ValueError("Le service WMS n’a pas renvoyé une image PNG pour " + name)
+        temporary = Path(fn_img).with_suffix('.png.tmp')
         try:
-            with open(fn_img,'wb') as saveFile:
-                saveFile.write(x.read())
-        except :
-            c4d.gui.MessageDialog(self.TXT_FILE_CREATION_PROBLEM)
-            return None
+            temporary.write_bytes(image)
+            temporary.replace(fn_img)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
 
-        if not os.path.isfile(fn_img):
-            return None
-        
         doc.StartUndo()
 
-        #création du matériau
-        mat = creer_mat(fn_img, doc, alpha = False)
-        doc.InsertMaterial(mat)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
+        try:
+            #création du matériau
+            mat = creer_mat(fn_img, doc, alpha = False)
+            doc.InsertMaterial(mat)
+            doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
 
-        plan = creer_plan(name,mat,(xmax-xmin),(ymax-ymin), projection= 'top')
-        centre = c4d.Vector((xmax+xmin)/2,0,(ymax+ymin)/2) - doc[CONTAINER_ORIGIN]
-        plan.SetAbsPos(centre)
-        doc.InsertObject(plan)
-        doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
+            targets = getattr(self, 'import_targets', [])
+            if targets:
+                for target in targets:
+                    if not target.IsAlive() or target.GetDocument() != doc:
+                        raise ValueError('Un objet sélectionné n’est plus disponible.')
+                    apply_map_material(doc, target, mat, (xmin, ymin, xmax, ymax))
+            else:
+                plan = creer_plan(name,mat,(xmax-xmin),(ymax-ymin), projection='top')
+                centre = c4d.Vector((xmax+xmin)/2,0,(ymax+ymin)/2) - doc[CONTAINER_ORIGIN]
+                plan.SetAbsPos(centre)
+                doc.InsertObject(plan)
+                doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,plan)
+                make_editable(plan,doc)
 
-        plan_edit = make_editable(plan,doc)
-
-        doc.EndUndo()
+        finally:
+            doc.EndUndo()
         c4d.EventAdd()
         
 
@@ -314,10 +399,43 @@ class SwissImagesDlg(GeoExtentDialog):
 
 
 
+class SwissImagesDlg(LayerControls, BaseSwissImagesDlg):
+    def CreateLayout(self):
+        self.ScrollGroupBegin(2900, c4d.BFH_SCALEFIT | c4d.BFV_SCALEFIT,
+                              c4d.SCROLLGROUP_VERT | c4d.SCROLLGROUP_HORIZ,
+                              initw=240, inith=180)
+        result = super().CreateLayout()
+        self.GroupEnd()
+        return result
+
+
+def dialog_screen_geometry():
+    mouse = c4d.BaseContainer()
+    x = y = 0
+    if c4d.gui.GetInputState(c4d.BFM_INPUT_MOUSE, c4d.BFM_INPUT_MOUSELEFT, mouse):
+        x, y = mouse[c4d.BFM_INPUT_X], mouse[c4d.BFM_INPUT_Y]
+    screen = c4d.gui.GeGetScreenDimensions(int(x), int(y), False)
+    width = screen['sx2'] - screen['sx1']
+    height = screen['sy2'] - screen['sy1']
+    w = max(240, min(660, int(width * .90)))
+    h = max(180, min(1000, int(height * .88)))
+    return dict(xpos=screen['sx1'] + (width-w)//2,
+                ypos=screen['sy1'] + (height-h)//2,
+                defaultw=w, defaulth=h)
+
+
 def main():
-    global dlg
+    # Conserver le dialogue entre deux exécutions et fermer la version précédente.
+    previous = getattr(c4d, "_swisstopo_images_dialog", None)
+    if previous is not None:
+        previous.SetTimer(0)
+        if getattr(previous, 'picker', None):
+            previous.picker.SetTimer(0)
+            previous.picker.Close()
+        previous.Close()
     dlg = SwissImagesDlg()
-    dlg.Open(c4d.DLG_TYPE_ASYNC)
+    c4d._swisstopo_images_dialog = dlg
+    dlg.Open(c4d.DLG_TYPE_ASYNC, **dialog_screen_geometry())
 
 # Execute main()
 if __name__=='__main__':
